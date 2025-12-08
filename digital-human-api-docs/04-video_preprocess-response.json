@@ -1,0 +1,21 @@
+{
+  "status": "200 OK",
+  "headers": {
+    "content-encoding": "br",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Wed, 08 Oct 2025 06:33:54 GMT",
+    "eagleid": "a3b3e41617599052281128312e",
+    "server": "Tengine",
+    "server-timing": "inner; dur=5971, cdn-cache;desc=MISS,edge;dur=34,origin;dur=6040",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "timing-allow-origin": "*",
+    "tt_stable": "1",
+    "vary": "Accept-Encoding",
+    "via": "cache17.l2cn3031[6040,0], ens-cache19.cn4241[6074,0]",
+    "x-tt-logid": "20251008143348356BB4D6A8066732D689",
+    "x-tt-trace-host": "01e92576b0afc776fd3853ff43f6051701fb002e858c64581c5862551c3aa612ad7f0a03928e72f3f8a768f93ada4ac6a3749ca8936aa3c6391e419b79f9e4bf459f11efd6b39c5f9f1e10a900984347949f3287ecc5e106ded57c9d6f293166c01ac67feb6218e4b3f370b46b1dde5eff",
+    "x-tt-trace-id": "00-251008143348356BB4D6A8066732D689-492C84028F12A7C0-00",
+    "x-tt-trace-tag": "id=03;cdn-cache=miss;type=dyn"
+  },
+  "body": "NOTE: The response body was not captured by the tool. It likely contains information about the processed assets."
+}

@@ -1,0 +1,21 @@
+{
+  "status": "200 OK",
+  "headers": {
+    "content-encoding": "br",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Wed, 08 Oct 2025 06:33:35 GMT",
+    "eagleid": "a3b3e41617599052157287678e",
+    "server": "Tengine",
+    "server-timing": "inner; dur=26, cdn-cache;desc=MISS,edge;dur=10,origin;dur=168",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "timing-allow-origin": "*",
+    "tt_stable": "1",
+    "vary": "Accept-Encoding",
+    "via": "cache12.l2st4-5[168,0], ens-cache19.cn4241[178,0]",
+    "x-tt-logid": "20251008143335DEF1680548C5771FA0AD",
+    "x-tt-trace-host": "01e92576b0afc776fd3853ff43f60517013fe082edd331c48fafeaee69ce3d2016deb531dd81a2fc55f3b05f53ddbcfdd401a0e75b8fbd7cfc94cad9c5a24748f1935a4c1c70f53ba54759d11d5639731b398a42aa9b81ee8e8b5674deca1c764ee6daa9e571a9242e1a00004309c06617",
+    "x-tt-trace-id": "00-251008143335DEF1680548C5771FA0AD-66D31FC53029555E-00",
+    "x-tt-trace-tag": "id=03;cdn-cache=miss;type=dyn"
+  },
+  "body": "NOTE: The response body was not captured by the tool. It typically contains the upload URL and authorization tokens."
+}

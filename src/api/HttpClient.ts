@@ -6,7 +6,7 @@
 
 import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { generateCookie } from '../utils/auth.js';
-import { DEFAULT_ASSISTANT_ID, UA } from '../types/models.js';
+import { DEFAULT_ASSISTANT_ID, UA, WEB_ID } from '../types/models.js';
 import { generateUuid, jsonEncode, toUrlParams, generateMsToken, unixTimestamp } from '../utils/index.js';
 import { generate_a_bogus } from '../utils/a_bogus.js';
 import { logger } from '../utils/logger.js';
@@ -42,6 +42,31 @@ export class HttpClient {
   }
 
   /**
+   * 生成请求签名
+   * 根据DevTools验证的签名算法：MD5("9e2c|{uri最后7字符}|7|8.4.0|{时间戳}||11ac")
+   * Appvr请求头和sign计算都使用8.4.0版本
+   */
+  private generateSign(uri: string, deviceTime: number): string {
+    const PLATFORM_CODE = "7";
+    const VERSION_CODE = "8.4.0";  // DevTools验证：浏览器使用8.4.0计算sign
+    const PREFIX = "9e2c";
+    const SUFFIX = "11ac";
+
+    // 获取URI的最后7个字符
+    const uriSuffix = uri.slice(-7);
+
+    // 构建签名字符串: 9e2c|{uri最后7字符}|7|8.4.0|{时间戳}||11ac
+    const signString = `${PREFIX}|${uriSuffix}|${PLATFORM_CODE}|${VERSION_CODE}|${deviceTime}||${SUFFIX}`;
+
+    // MD5哈希
+    const sign = crypto.createHash('md5').update(signString).digest('hex');
+
+    logger.debug(`[HttpClient] Sign string: ${signString} => ${sign}`);
+
+    return sign;
+  }
+
+  /**
    * 执行HTTP请求
    */
   async request<T = any>(options: RequestOptions): Promise<T> {
@@ -57,15 +82,28 @@ export class HttpClient {
     const baseUrl = 'https://jimeng.jianying.com';
     const fullUrl = url.includes('https://') ? url : `${baseUrl}${url}`;
 
+    // 提取URI路径用于签名计算
+    const uri = url.startsWith('/') ? url : new URL(fullUrl).pathname;
+
+    // 生成设备时间戳和签名
+    const deviceTime = Math.floor(Date.now() / 1000);
+    const sign = this.generateSign(uri, deviceTime);
+
     const FAKE_HEADERS = {
       Accept: "application/json, text/plain, */*",
       "Accept-Encoding": "gzip, deflate, br, zstd",
       "Accept-language": "zh-CN,zh;q=0.9",
       "Cache-control": "no-cache",
-      "Content-Type": "application/json",  // 🔥 添加Content-Type
-      "Last-event-id": "undefined",
+      "Content-Type": "application/json",
       Appid: DEFAULT_ASSISTANT_ID,
-      Appvr: "5.8.0",
+      Appvr: "8.4.0",  // DevTools抓取的版本，sign仍使用5.8.0
+      "device-time": deviceTime.toString(),
+      "sign-ver": "1",
+      sign: sign,  // 添加sign签名头
+      loc: "cn",
+      "app-sdk-version": "48.0.0",
+      tdid: "",
+      lan: "zh-Hans",
       Origin: "https://jimeng.jianying.com",
       Pragma: "no-cache",
       Priority: "u=1, i",
@@ -106,25 +144,30 @@ export class HttpClient {
 
   /**
    * 生成请求认证参数（用于图片上传等）
+   * @param model - 可选模型名称，用于babi_param
+   * @param hasRefImage - 是否有参考图，用于babi_param
    */
-  generateRequestParams(): any {
+  generateRequestParams(model?: string, hasRefImage?: boolean): any {
+    const actualModel = model || 'jimeng-4.0';
+
+    // 构建babi_param（参考jimeng-free-api-all）
+    const babiParam = {
+      "scenario": "image_video_generation",
+      "feature_key": hasRefImage ? "to_image_referenceimage_generate" : "aigc_to_image",
+      "feature_entrance": "to_image",
+      "feature_entrance_detail": hasRefImage
+        ? "to_image-referenceimage-byte_edit"
+        : `to_image-${actualModel}`,
+    };
+
+    // 完全按照jimeng-free-api-all的简化参数结构
     const rqParams: any = {
       "aid": parseInt("513695"),
       "device_platform": "web",
-      "region": "cn",
-      "webId": "7398608394939885067",
-      "da_version": "3.3.2",
-      "web_component_open_flag": 1,
-      "web_version": "6.6.0",
-      "aigc_features": "app_lip_sync",
-      "msToken": generateMsToken(),
+      "region": "CN",  // 注意大写
+      "web_id": WEB_ID,  // 注意是web_id不是webId
+      "babi_param": encodeURIComponent(JSON.stringify(babiParam)),
     };
-
-    // 添加a_bogus防篡改参数
-    rqParams['a_bogus'] = generate_a_bogus(
-      toUrlParams(rqParams),
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
 
     return rqParams;
   }

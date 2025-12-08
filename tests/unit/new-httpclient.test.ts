@@ -37,10 +37,8 @@ describe('HttpClient (New Implementation)', () => {
 
       expect(params).toHaveProperty('aid');
       expect(params).toHaveProperty('device_platform', 'web');
-      expect(params).toHaveProperty('webId');
-      expect(params).toHaveProperty('msToken');
-      expect(params).toHaveProperty('a_bogus');
-      expect(typeof params.a_bogus).toBe('string');
+      expect(params).toHaveProperty('web_id');
+      expect(params).toHaveProperty('babi_param');
     });
   });
 

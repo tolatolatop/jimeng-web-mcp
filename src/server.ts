@@ -25,12 +25,12 @@ export interface ServerInstance {
 // 创建MCP服务器
 export const createServer = (): McpServer => {
   logger.debug('Creating MCP server instance...');
-  
+
   const server = new McpServer({
     name: "Jimeng MCP Server",
     version: "1.0.0"
   });
-  
+
   logger.debug('MCP server instance created successfully');
 
   server.tool(
@@ -52,8 +52,9 @@ export const createServer = (): McpServer => {
     {
       filePath: z.array(z.string()).optional().describe("参考图绝对路径数组，最多4张"),
       prompt: z.string().describe("图像描述文本"),
-      model: z.string().optional().describe("模型名称，默认jimeng-4.0"),
+      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认), jimeng-3.1, jimeng-3.0"),
       aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
+      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
       sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
       negative_prompt: z.string().optional().default("").describe("负向提示词"),
       reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组"),
@@ -90,6 +91,7 @@ export const createServer = (): McpServer => {
           prompt: params.prompt,
           model: params.model,
           aspectRatio: params.aspectRatio,
+          resolution: params.resolution,
           sample_strength: params.sample_strength,
           negative_prompt: params.negative_prompt,
           reference_strength: params.reference_strength,
@@ -143,7 +145,7 @@ export const createServer = (): McpServer => {
           sample_strength: params.sample_strength,
           negative_prompt: params.negative_prompt
         }, null, 2)}`);
-        
+
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `图像生成失败: ${errorMessage}` }],
@@ -166,7 +168,8 @@ export const createServer = (): McpServer => {
       async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
       filePath: z.array(z.string()).optional().describe("可选参考图路径（影响整体风格，最多4张）"),
       aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
-      model: z.string().optional().describe("模型名称，默认jimeng-4.0"),
+      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
+      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认)"),
       sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
       negative_prompt: z.string().optional().default("").describe("负向提示词"),
       reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组"),
@@ -185,6 +188,7 @@ export const createServer = (): McpServer => {
           filePath: params.filePath,
           model: params.model,
           aspectRatio: params.aspectRatio,
+          resolution: params.resolution,
           sample_strength: params.sample_strength,
           negative_prompt: params.negative_prompt,
           reference_strength: params.reference_strength,
@@ -558,10 +562,10 @@ export const startServer = async (): Promise<void> => {
   logger.debug("Jimeng MCP Server 正在启动...");
   logger.debug("stdin.isTTY", { isTTY: process.stdin.isTTY });
   logger.debug("stdout.isTTY", { isTTY: process.stdout.isTTY });
-  
+
   // 正确等待连接 - 这会阻塞直到连接关闭
   await server.connect(transport);
-  
+
   // 正常情况下，只有在连接关闭时才会执行到这里
   logger.debug("MCP服务器连接已关闭");
 };

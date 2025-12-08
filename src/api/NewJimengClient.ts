@@ -74,6 +74,7 @@ export class NewJimengClient {
       prompt,
       model = DEFAULT_MODEL,
       aspectRatio = "auto",
+      resolution = "2k",
       filePath,
       reference_strength,
       sample_strength,
@@ -99,6 +100,7 @@ export class NewJimengClient {
       prompt: finalPrompt, // 使用处理后的prompt
       model_name: getModel(model),
       aspect_ratio: aspectRatio,
+      resolution: resolution, // 传递resolution用于buildAbilities计算dimensions
       negative_prompt: negative_prompt || "",
       draft_version: DRAFT_VERSION,
     };
@@ -813,7 +815,8 @@ export class NewJimengClient {
     originalParams?: ImageGenerationParams,
     uploadedImages?: any[],
   ): Promise<string> {
-    const requestParams = this.httpClient.generateRequestParams();
+    const hasRefImage = !!(uploadedImages && uploadedImages.length > 0);
+    const requestParams = this.httpClient.generateRequestParams(apiParams.model_name, hasRefImage);
 
     // 🔥 关键修复：继续生成必须重用原始请求参数
     const isContinuation =
@@ -872,12 +875,13 @@ export class NewJimengClient {
       root_model: params.model_name,
     };
 
-    // metricsExtra不包含generateCount，让API根据prompt自动决定总数量
+    // metricsExtra必须包含generateCount: 1（参考jimeng-free-api-all）
     const metricsExtra = jsonEncode({
+      generateCount: 1,
       promptSource: "custom",
-      enterFrom: "click",
-      generateId: submitId,
-      isRegenerate: false,
+      templateSource: "",
+      lastRequestId: "",
+      originRequestId: "",
     });
 
     const draftContent = jsonEncode({
@@ -886,7 +890,7 @@ export class NewJimengClient {
       min_version: params.draft_version || DRAFT_VERSION,
       min_features: [],
       is_from_tsn: true,
-      version: "3.3.2",
+      version: "3.0.2",
       main_component_id: componentId,
       component_list: [
         {
@@ -895,17 +899,8 @@ export class NewJimengClient {
           min_version: hasRefImages
             ? "3.0.2"
             : params.draft_version || DRAFT_VERSION,
-          aigc_mode: "workbench",
-          gen_type: 1,
-          metadata: {
-            type: "",
-            id: generateUuid(),
-            created_platform: 3,
-            created_platform_version: "",
-            created_time_in_ms: Date.now().toString(),
-            created_did: "",
-          },
           generate_type: hasRefImages ? "blend" : "generate",
+          aigc_mode: "workbench",
           abilities: {
             type: "",
             id: generateUuid(),
@@ -969,16 +964,21 @@ export class NewJimengClient {
       prompt,
       model_name,
       aspect_ratio,
+      resolution = '2k',
       negative_prompt,
       reference_images,
     } = params;
 
-    // 使用ImageDimensionCalculator获取正确的尺寸和imageRatio
+    // 使用ImageDimensionCalculator获取正确的尺寸和imageRatio（支持2k/4k分辨率）
     const dimensions = ImageDimensionCalculator.calculateDimensions(
       aspect_ratio || "auto",
+      undefined,
+      undefined,
+      resolution,
     );
     const aspectRatioPreset = ImageDimensionCalculator.getAspectRatioPreset(
       aspect_ratio || "auto",
+      resolution,
     );
     const imageRatio = aspectRatioPreset?.imageRatio || 1; // 默认1:1的imageRatio
 
@@ -1000,14 +1000,14 @@ export class NewJimengClient {
             prompt: promptPrefix + prompt,
             sample_strength: params.sample_strength || 0.5,
             image_ratio: imageRatio,
+            intelligent_ratio: false, // Match cURL
             large_image_info: {
               type: "",
               id: generateUuid(),
               height: dimensions.height,
               width: dimensions.width,
-              resolution_type: "2k",
+              resolution_type: resolution, // Match cURL '2k' or '4k'
             },
-            intelligent_ratio: false,
           },
           ability_list: reference_images.map((ref: any, index: number) => ({
             type: "",
@@ -1068,14 +1068,18 @@ export class NewJimengClient {
             seed: Math.floor(Math.random() * 100000000) + 2500000000,
             sample_strength: params.sample_strength || 0.5,
             image_ratio: imageRatio,
+            intelligent_ratio: false, // Match cURL
             large_image_info: {
               type: "",
               id: generateUuid(),
               height: dimensions.height,
               width: dimensions.width,
-              resolution_type: "2k",
+              resolution_type: resolution, // Match cURL '2k' or '4k'
             },
-            intelligent_ratio: false,
+          },
+          history_option: {
+            type: "",
+            id: generateUuid(),
           },
         },
       };

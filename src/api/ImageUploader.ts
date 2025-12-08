@@ -273,9 +273,18 @@ export class ImageUploader {
     try {
       logger.debug('[ImageUploader] 开始获取上传凭证...');
 
+      // 上传token API参数（保持当前工作的版本，未从DevTools确认）
+      const uploadParams = {
+        aid: "513695",
+        device_platform: "web",
+        region: "CN",
+        web_id: Date.now().toString(),
+      };
+
       const authRes = await this.httpClient.request({
         method: 'POST',
-        url: '/mweb/v1/get_upload_token?aid=513695&da_version=3.2.2&aigc_features=app_lip_sync',
+        url: '/mweb/v1/get_upload_token',
+        params: uploadParams,
         data: { scene: 2 },
         timeout: 30000 // 明确设置30秒超时
       });

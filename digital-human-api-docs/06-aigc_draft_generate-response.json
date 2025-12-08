@@ -1,0 +1,22 @@
+{
+  "status": "200 OK",
+  "headers": {
+    "content-encoding": "br",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Wed, 08 Oct 2025 06:35:12 GMT",
+    "eagleid": "a3b3e41617599053118757069e",
+    "server": "Tengine",
+    "server-timing": "inner; dur=620, cdn-cache;desc=MISS,edge;dur=32,origin;dur=632",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "timing-allow-origin": "*",
+    "tt_stable": "1",
+    "vary": "Accept-Encoding",
+    "via": "cache67.l2cn3031[632,0], ens-cache19.cn4241[664,0]",
+    "x-ms-token": "Y89jQiR_vfPr1Te2wRJn6yd_NUaxeKx5k1aWEg8h85tGj5zKcQmi24e2s8uBSRElth5NfyeGLBi94LEPC2mJNckhpOeS0CU5vlcwj2kDBnsVUuB5F_RCKbh3O-BAm0JgZA==",
+    "x-tt-logid": "202510081435112635857F1EEC4DBE67E1",
+    "x-tt-trace-host": "018ac4a531fa62859d13f8bd428781c5299f0f449fbd79ecbe62dd4dc3aa89f4f2a3e6cef5c2b011a0250b9b9cd2b52c568bb791f979c42810f8e10c392b7a4e6a9badf00cb3b5f100cb7ddc701ddd1cac701dc677af6f9476f4962b47e6c4cfdd8216b987e3847c964635b09bf2511737",
+    "x-tt-trace-id": "00-2510081435112635857F1EEC4DBE67E1-6AE0870A7AF7AFD6-00",
+    "x-tt-trace-tag": "id=03;cdn-cache=miss;type=dyn"
+  },
+  "body": "NOTE: The response body was not captured by the tool. It typically contains the task ID for the generation job, which is used for polling the status."
+}

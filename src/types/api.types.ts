@@ -142,6 +142,7 @@ export interface ImageGenerationParams {
   model?: string; // 模型名称，默认使用 DEFAULT_MODEL
   prompt: string; // 提示词
   aspectRatio?: string; // 宽高比预设，如 '16:9', '9:16', 'auto' 等
+  resolution?: '2k' | '4k'; // 分辨率选择，2k或4k，默认2k
   sample_strength?: number; // 精细度，默认0.5
   negative_prompt?: string; // 反向提示词，默认空
   refresh_token?: string; // 刷新令牌，必需

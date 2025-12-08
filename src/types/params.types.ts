@@ -3,6 +3,7 @@ export interface ImageGenerationParams {
   prompt: string;
   model?: string;
   aspectRatio?: string;
+  resolution?: '2k' | '4k';  // 分辨率选择，默认2k
   width?: number;
   height?: number;
   negative_prompt?: string;

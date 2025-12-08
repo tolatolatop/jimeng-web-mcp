@@ -37,6 +37,7 @@ export class NewCreditService {
    * 获取详细积分信息
    */
   async getCredit(): Promise<CreditInfo> {
+    // 积分API根据DevTools抓取：无URL参数，仅通过请求头认证
     const result = await this.httpClient.request({
       method: 'POST',
       url: '/commerce/v1/benefits/user_credit',
@@ -62,6 +63,7 @@ export class NewCreditService {
    */
   async receiveCredit(): Promise<void> {
     try {
+      // 积分领取API根据DevTools抓取：使用msToken+a_bogus参数（暂时保持简化版本）
       const credit = await this.httpClient.request({
         method: 'POST',
         url: '/commerce/v1/benefits/credit_receive',

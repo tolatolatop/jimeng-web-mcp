@@ -1,0 +1,24 @@
+{
+  "url": "https://jimeng.jianying.com/mweb/v1/video_generate/pre_process?aid=513695&web_version=7.5.0&da_version=3.3.3&aigc_features=app_lip_sync",
+  "method": "POST",
+  "headers": {
+    "appid": "513695",
+    "sec-ch-ua-platform": "\"macOS\"",
+    "device-time": "1759905228",
+    "sec-ch-ua": "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+    "sec-ch-ua-mobile": "?0",
+    "sign-ver": "1",
+    "loc": "cn",
+    "app-sdk-version": "48.0.0",
+    "tdid": "",
+    "appvr": "8.4.0",
+    "accept": "application/json, text/plain, */*",
+    "content-type": "application/json",
+    "sign": "fa0be1297891d4bf2bbcee0e3b0e6f7f",
+    "referer": "https://jimeng.jianying.com/ai-tool/generate?type=digitalHuman",
+    "lan": "zh-Hans",
+    "pf": "7",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+  },
+  "body": "NOTE: The request body was not captured by the tool. It likely contains references to the uploaded image and generated audio."
+}

@@ -1,0 +1,13 @@
+{
+  "url": "https://tos-d-x-lf.snssdk.com/upload/v1/tos-cn-i-tb4s082cfz/3f1457a188e549bbaceaf957da4d3839",
+  "method": "POST",
+  "headers": {
+    "accept": "*/*",
+    "access-control-request-headers": "authorization,content-crc32,content-disposition,content-type,x-storage-u",
+    "access-control-request-method": "POST",
+    "origin": "https://jimeng.jianying.com",
+    "sec-fetch-mode": "cors",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+  },
+  "body": "NOTE: The request body contains the binary data of the uploaded file and was not captured by the tool."
+}

@@ -1,15 +1,22 @@
 {
-  "mcpServers": {
-    "jimeng-web-mcp": {
-      "command": "node",
-      "args": ["lib/index.js"],
-      "env": {
-        "JIMENG_API_TOKEN": "165fe506411b95d771e619b7d509bb28"
-      }
-    },
+  "mcpServices": {
     "chrome-devtools": {
       "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "jimeng-web-mcp": {
+      "command": "node",
+      "args": [
+        "-r",
+        "dotenv/config",
+        "/Users/lupin/mcp-services/jimeng-mcp/lib/index.js"
+      ],
+      "env": {
+        "JIMENG_API_TOKEN": "668e40b0e112d8d2826542c5c84b5618"
+      }
     }
   }
 }

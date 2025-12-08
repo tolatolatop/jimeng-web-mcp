@@ -1,4 +1,9 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import { jest, describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "@jest/globals";
+import type {
+  ImageGenerationParams,
+  QueryResultResponse,
+  GenerationStatus
+} from '../../src/types/api.types.js';
 
 /**
  * 🚀 图片生成端到端工作流测试
@@ -13,31 +18,35 @@ import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals
  * 这些测试模拟真实使用场景，确保整个系统端到端正常工作
  */
 
-import {
-  generateImage,
-  generateImageAsync,
-  getImageResult,
-  getApiClient
-} from '../../src/api.js';
-
-import type {
-  ImageGenerationParams,
-  QueryResultResponse,
-  GenerationStatus
-} from '../../src/types/api.types.js';
-
-// Mock the NewJimengClient after imports
+// Mock the NewJimengClient BEFORE importing the API
 const mockNewJimengClient = {
   generateImage: jest.fn(),
   generateImageAsync: jest.fn(),
   getImageResult: jest.fn(),
   getBatchResults: jest.fn(),
-  getRefreshToken: jest.fn()
+  getRefreshToken: jest.fn(),
+  videoPostProcess: jest.fn(),
+  queryVideoResult: jest.fn(),
+  queryVideoResults: jest.fn(),
+  generateVideo: jest.fn(),
+  generateMainReferenceVideo: jest.fn(),
+  frameInterpolation: jest.fn(),
+  superResolution: jest.fn(),
+  generateAudioEffect: jest.fn(),
 };
 
-jest.mock('../../src/api/NewJimengClient.js', () => ({
+// Use unstable_mockModule for ESM support
+jest.unstable_mockModule('../../src/api/NewJimengClient.js', () => ({
   NewJimengClient: jest.fn(() => mockNewJimengClient)
 }));
+
+// Dynamic import of the API to ensure mock is applied first
+const {
+  generateImage,
+  generateImageAsync,
+  getImageResult,
+  getApiClient
+} = await import('../../src/api.js');
 
 // Mock console methods to reduce noise in tests
 const originalConsoleLog = console.log;
@@ -53,7 +62,9 @@ afterAll(() => {
   console.error = originalConsoleError;
 });
 
-const describeOrSkip = process.env.JIMENG_API_TOKEN ? describe : describe.skip; describeOrSkip('🚀 图片生成端到端工作流测试', () => {
+const describeOrSkip = process.env.JIMENG_API_TOKEN ? describe : describe.skip;
+
+describeOrSkip('🚀 图片生成端到端工作流测试', () => {
 
   let mockClient: any;
   let originalEnv: NodeJS.ProcessEnv;
