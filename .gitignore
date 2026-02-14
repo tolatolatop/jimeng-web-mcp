@@ -88,3 +88,9 @@ node_modules/
 
 # Specify workflow directory
 .specify/
+.temp/
+
+# Historical analysis docs (may contain sensitive data)
+20250105-api-endpoint-analysis/
+digital-human-api-docs/
+video_generate_pre_process.json

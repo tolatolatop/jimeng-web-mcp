@@ -138,9 +138,9 @@ type SyncResult = string[];
 **示例**:
 ```typescript
 [
-  "https://p9-dreamina-sign.byteimg.com/...",
-  "https://p3-dreamina-sign.byteimg.com/...",
-  "https://p26-dreamina-sign.byteimg.com/..."
+  "https://cdn-host/image1...",
+  "https://cdn-host/image2...",
+  "https://cdn-host/image3..."
 ]
 ```
 

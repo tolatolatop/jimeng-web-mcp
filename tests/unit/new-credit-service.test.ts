@@ -4,7 +4,7 @@
  */
 
 import { jest, describe, it, expect, beforeAll, beforeEach, afterEach } from '@jest/globals';
-import { NewCreditService, InsufficientCreditsError, CreditReceiveResult } from '../../src/api/NewCreditService.js';
+import { NewCreditService, InsufficientCreditsError, CreditReceiveResult, CreditHistoryResult, SubscriptionInfo } from '../../src/api/NewCreditService.js';
 import { HttpClient } from '../../src/api/HttpClient.js';
 
 describe('NewCreditService (Composition Pattern)', () => {
@@ -216,6 +216,113 @@ describe('NewCreditService (Composition Pattern)', () => {
       expect(result.curTotalCredits).toBe(0);
       expect(result.receiveQuota).toBe(0);
       expect(result.isFirstReceive).toBe(false);
+    });
+  });
+
+  describe('getCreditHistory', () => {
+    it('should return credit history records', async () => {
+      mockRequest.mockResolvedValue({
+        data: {
+          new_cursor: '1770997398:123',
+          has_more: true,
+          records: [
+            {
+              amount: 90,
+              create_time: 1771101566,
+              title: '视频生成',
+              history_type: 2,
+              submit_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+              status: 'Init',
+            },
+            {
+              amount: 60,
+              create_time: 1771097335,
+              title: '每日免费积分',
+              history_type: 1,
+              submit_id: '11111111-2222-3333-4444-555555555555',
+              status: 'Checked',
+            }
+          ]
+        }
+      });
+
+      const result: CreditHistoryResult = await creditService.getCreditHistory();
+
+      expect(result.records).toHaveLength(2);
+      expect(result.records[0].amount).toBe(90);
+      expect(result.records[0].title).toBe('视频生成');
+      expect(result.records[0].historyType).toBe(2);
+      expect(result.records[1].title).toBe('每日免费积分');
+      expect(result.records[1].historyType).toBe(1);
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe('1770997398:123');
+    });
+
+    it('should return empty on error', async () => {
+      mockRequest.mockRejectedValue(new Error('Network error'));
+
+      const result = await creditService.getCreditHistory();
+
+      expect(result.records).toHaveLength(0);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should pass cursor and count params', async () => {
+      mockRequest.mockResolvedValue({ data: { records: [], has_more: false, new_cursor: '0' } });
+
+      await creditService.getCreditHistory('cursor123', 10);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { count: 10, cursor: 'cursor123' }
+        })
+      );
+    });
+  });
+
+  describe('getSubscriptionInfo', () => {
+    it('should return VIP subscription info', async () => {
+      mockRequest.mockResolvedValue({
+        data: {
+          flag: true,
+          cur_vip_level: 'artisan',
+          start_time: 1770732775,
+          end_time: 1802873574,
+          is_cancel_subscribe: false,
+          subscribe_type: 'auto',
+          subscribe_cycle: 12,
+        }
+      });
+
+      const result: SubscriptionInfo = await creditService.getSubscriptionInfo();
+
+      expect(result.isVip).toBe(true);
+      expect(result.vipLevel).toBe('artisan');
+      expect(result.startTime).toBe(1770732775);
+      expect(result.endTime).toBe(1802873574);
+      expect(result.isAutoRenew).toBe(true);
+      expect(result.subscribeType).toBe('auto');
+      expect(result.subscribeCycle).toBe(12);
+    });
+
+    it('should return defaults for non-VIP user', async () => {
+      mockRequest.mockResolvedValue({
+        data: { flag: false }
+      });
+
+      const result = await creditService.getSubscriptionInfo();
+
+      expect(result.isVip).toBe(false);
+      expect(result.vipLevel).toBe('');
+    });
+
+    it('should return defaults on error', async () => {
+      mockRequest.mockRejectedValue(new Error('Network error'));
+
+      const result = await creditService.getSubscriptionInfo();
+
+      expect(result.isVip).toBe(false);
+      expect(result.vipLevel).toBe('');
     });
   });
 

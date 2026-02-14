@@ -155,6 +155,14 @@ export class ImageUploader {
 
     const uri = commitRes.Result.PluginResult[0].ImageUri;
 
+    // 步骤5: 提交图片审核（上传后需调用submit_audit_job）
+    try {
+      await this.submitAuditJob(uri);
+    } catch (error) {
+      // 审核失败不阻断上传流程，仅记录日志
+      logger.debug(`图片审核提交失败 [${imagePath}]: ${error}`);
+    }
+
     return {
       uri,
       originalPath: imagePath,
@@ -197,6 +205,28 @@ export class ImageUploader {
       // 返回默认值以保持兼容性
       return { width: 0, height: 0, format: 'png' };
     }
+  }
+
+  /**
+   * 提交图片审核
+   * 上传完成后将图片URI提交审核，确保内容合规
+   */
+  private async submitAuditJob(imageUri: string): Promise<void> {
+    const params = {
+      aid: 513695,
+      web_version: '7.5.0',
+      da_version: '3.3.9',
+      aigc_features: 'app_lip_sync',
+    };
+
+    await this.httpClient.request({
+      method: 'POST',
+      url: '/mweb/v1/imagex/submit_audit_job',
+      params,
+      data: { uri_list: [imageUri] },
+    });
+
+    logger.debug(`[ImageUploader] 图片审核已提交: ${imageUri}`);
   }
 
   /**

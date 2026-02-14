@@ -160,12 +160,15 @@ export class HttpClient {
         : `to_image-${actualModel}`,
     };
 
-    // 完全按照jimeng-free-api-all的简化参数结构
+    // 参数结构对齐Web端实际请求格式
     const rqParams: any = {
-      "aid": parseInt("513695"),
+      "aid": 513695,
       "device_platform": "web",
-      "region": "CN",  // 注意大写
-      "web_id": WEB_ID,  // 注意是web_id不是webId
+      "region": "cn",
+      "webId": WEB_ID,
+      "web_version": "7.5.0",
+      "da_version": "3.3.9",
+      "aigc_features": "app_lip_sync",
       "babi_param": encodeURIComponent(JSON.stringify(babiParam)),
     };
 

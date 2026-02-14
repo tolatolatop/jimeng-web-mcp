@@ -10,7 +10,7 @@
 
 import { HttpClient } from "./HttpClient.js";
 import { ImageUploader } from "./ImageUploader.js";
-import { NewCreditService, CreditReceiveResult } from "./NewCreditService.js";
+import { NewCreditService, CreditReceiveResult, CreditHistoryResult, SubscriptionInfo } from "./NewCreditService.js";
 import { VideoService } from "./VideoService.js";
 import { CacheManager } from "../utils/cache-manager.js";
 import { logger } from "../utils/logger.js";
@@ -239,8 +239,8 @@ export class NewJimengClient {
   async getImageResult(historyId: string): Promise<any> {
     const requestParams = this.httpClient.generateRequestParams();
 
-    // UUID格式（如1e06b3c9-bd41-46dd-8889-70f2c61f66bb）使用submit_ids（视频）
-    // 数字格式（如4722540945676）使用history_ids（图片）
+    // UUID格式使用submit_ids（视频）
+    // 数字格式使用history_ids（图片）
     const isUUID =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         historyId,
@@ -798,6 +798,44 @@ export class NewJimengClient {
    */
   async receiveCredit(): Promise<CreditReceiveResult> {
     return this.creditService.receiveCredit();
+  }
+
+  /**
+   * 获取积分消费历史
+   */
+  async getCreditHistory(cursor?: string, count?: number): Promise<CreditHistoryResult> {
+    return this.creditService.getCreditHistory(cursor, count);
+  }
+
+  /**
+   * 获取VIP订阅信息
+   */
+  async getSubscriptionInfo(): Promise<SubscriptionInfo> {
+    return this.creditService.getSubscriptionInfo();
+  }
+
+  // ==================== 队列状态查询 ====================
+
+  /**
+   * 查询任务队列信息
+   * 返回排队位置、预计耗时、推荐轮询间隔等
+   */
+  async getQueueInfo(historyIds: string[]): Promise<Record<string, any>> {
+    const requestParams = {
+      aid: 513695,
+      web_version: '7.5.0',
+      da_version: '3.3.9',
+      aigc_features: 'app_lip_sync',
+    };
+
+    const response = await this.httpClient.request({
+      method: 'POST',
+      url: '/mweb/v1/get_history_queue_info',
+      params: requestParams,
+      data: { history_ids: historyIds },
+    });
+
+    return response?.data || {};
   }
 
   // ==================== 私有辅助方法 ====================

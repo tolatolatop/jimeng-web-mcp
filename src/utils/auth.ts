@@ -15,18 +15,20 @@ import { generate_a_bogus } from './a_bogus.js';
  * @returns Cookie字符串
  */
 export function generateCookie(refreshToken: string): string {
-  const sessData = `sessionid=${refreshToken}; sessionid_ss=${refreshToken}; sid_tt=${refreshToken}; sid_guard=${refreshToken}%7C1703836801%7C5183999%7CSat%2C%2027-Jan-2024%2019%3A00%3A00%2BGMT; install_id=4074746043159691; ttreq=1$55b6aae6e1e6dd7b4b4c47ad31dc4d8b0b5d09ef`;
+  const sessData = `sessionid=${refreshToken}; sessionid_ss=${refreshToken}; sid_tt=${refreshToken}; sid_guard=${refreshToken}%7C1703836801%7C5183999%7CSat%2C%2027-Jan-2024%2019%3A00%3A00%2BGMT; install_id=${generateRandomString(16)}; ttreq=1$${generateRandomString(40)}`;
 
-  // 基础Cookie数据
+  // 基础Cookie数据 — 使用动态生成的占位值
+  const csrfToken = crypto.randomBytes(16).toString('hex');
+  const uidToken = crypto.randomBytes(16).toString('hex');
   const baseCookies = [
-    `passport_csrf_token=d103234c7bb2f1d6e94ee9abbc84f750`,
-    `passport_csrf_token_default=d103234c7bb2f1d6e94ee9abbc84f750`,
+    `passport_csrf_token=${csrfToken}`,
+    `passport_csrf_token_default=${csrfToken}`,
     `is_staff_user=false`,
-    `n_mh=KY1c93FEY4V91lp9CwdHvKGbMz87QH7gwbpJrqawy8Q`,
-    `uid_tt=4d6536b62de9d2e51ff4bde1381be24a`,
-    `uid_tt_ss=4d6536b62de9d2e51ff4bde1381be24a`,
-    `sid_ucp_v1=1.0.0-KDRmNTFlNzIzNDA5MGY3YjRhZDg1ZTlmYmU5MmMzMzM2N2Q2ODI0ODAKHwjZicD3jczFBxCpvY7GBhifrR8gDDDZ37ewBjgIQCYaAmxxIiAxNjVmZTUwNjQxMWI5NWQ3NzFlNjE5YjdkNTA5YmIyOA`,
-    `ssid_ucp_v1=1.0.0-KDRmNTFlNzIzNDA5MGY3YjRhZDg1ZTlmYmU5MmMzMzM2N2Q2ODI0ODAKHwjZicD3jczFBxCpvY7GBhifrR8gDDDZ37ewBjgIQCYaAmxxIiAxNjVmZTUwNjQxMWI5NWQ3NzFlNjE5YjdkNTA5YmIyOA`,
+    `n_mh=${crypto.randomBytes(32).toString('base64url')}`,
+    `uid_tt=${uidToken}`,
+    `uid_tt_ss=${uidToken}`,
+    `sid_ucp_v1=placeholder`,
+    `ssid_ucp_v1=placeholder`,
     sessData
   ];
 

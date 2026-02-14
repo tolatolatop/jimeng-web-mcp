@@ -250,10 +250,10 @@ export const getImageResult = async (
  * ```typescript
  * const results = await getBatchResults([
  *   '12345',  // 图片ID
- *   '1e06b3c9-bd41-46dd-8889-70f2c61f66bb'  // 视频ID (UUID)
+ *   'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'  // 视频ID (UUID)
  * ]);
  * console.log(results['12345'].imageUrls);
- * console.log(results['1e06b3c9-bd41-46dd-8889-70f2c61f66bb'].videoUrl);
+ * console.log(results['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'].videoUrl);
  * ```
  */
 export const getBatchResults = async (
@@ -342,7 +342,7 @@ export { getApiClient };
 export { HttpClient } from './api/HttpClient.js';
 export { ImageUploader } from './api/ImageUploader.js';
 export { VideoService } from './api/VideoService.js';
-export { NewCreditService, type CreditReceiveResult } from './api/NewCreditService.js';
+export { NewCreditService, type CreditReceiveResult, type CreditHistoryResult, type CreditHistoryRecord, type SubscriptionInfo } from './api/NewCreditService.js';
 
 // VideoGenerator removed - use VideoService instead from new implementation
 

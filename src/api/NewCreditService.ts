@@ -23,6 +23,47 @@ export interface CreditReceiveResult {
   isFirstReceive: boolean;
 }
 
+export interface CreditHistoryRecord {
+  /** 积分数量 */
+  amount: number;
+  /** 创建时间（Unix时间戳） */
+  createTime: number;
+  /** 标题（如"视频生成"、"图片生成"、"每日免费积分"） */
+  title: string;
+  /** 历史类型：1=领取 2=消费 */
+  historyType: number;
+  /** 关联任务ID */
+  submitId: string;
+  /** 状态（Init/Checked） */
+  status: string;
+}
+
+export interface CreditHistoryResult {
+  /** 历史记录列表 */
+  records: CreditHistoryRecord[];
+  /** 是否有更多数据 */
+  hasMore: boolean;
+  /** 下一页游标 */
+  nextCursor: string;
+}
+
+export interface SubscriptionInfo {
+  /** 是否为VIP */
+  isVip: boolean;
+  /** VIP等级（如 artisan, standard） */
+  vipLevel: string;
+  /** 订阅开始时间 */
+  startTime: number;
+  /** 订阅结束时间 */
+  endTime: number;
+  /** 是否自动续费 */
+  isAutoRenew: boolean;
+  /** 订阅类型 */
+  subscribeType: string;
+  /** 订阅周期（月） */
+  subscribeCycle: number;
+}
+
 /**
  * CreditService类（新版本 - 组合模式）
  */
@@ -105,6 +146,75 @@ export class NewCreditService {
       logger.debug(`积分领取请求失败: ${(error as Error).message}`);
       // 不抛错，返回默认值
       return { curTotalCredits: 0, receiveQuota: 0, isFirstReceive: false };
+    }
+  }
+
+  /**
+   * 获取积分消费历史
+   */
+  async getCreditHistory(cursor: string = '0', count: number = 20): Promise<CreditHistoryResult> {
+    try {
+      const response = await this.httpClient.request({
+        method: 'POST',
+        url: '/commerce/v1/benefits/user_credit_history',
+        data: { count, cursor },
+        headers: { 'Referer': 'https://jimeng.jianying.com/ai-tool/image/generate' }
+      });
+
+      const data = response?.data || response || {};
+      const records = (data.records || []).map((r: any) => ({
+        amount: r.amount || 0,
+        createTime: r.create_time || 0,
+        title: r.title || '',
+        historyType: r.history_type || 0,
+        submitId: r.submit_id || '',
+        status: r.status || '',
+      }));
+
+      return {
+        records,
+        hasMore: data.has_more || false,
+        nextCursor: data.new_cursor || '0',
+      };
+    } catch (error) {
+      logger.debug(`查询积分历史失败: ${error}`);
+      return { records: [], hasMore: false, nextCursor: '0' };
+    }
+  }
+
+  /**
+   * 获取VIP订阅信息
+   */
+  async getSubscriptionInfo(): Promise<SubscriptionInfo> {
+    try {
+      const response = await this.httpClient.request({
+        method: 'POST',
+        url: '/commerce/v1/subscription/user_info',
+        data: { aid: 513695, scene: 'vip', need_sign_info: true },
+        headers: { 'Referer': 'https://jimeng.jianying.com/ai-tool/image/generate' }
+      });
+
+      const data = response?.data || response || {};
+      return {
+        isVip: data.flag || false,
+        vipLevel: data.cur_vip_level || '',
+        startTime: data.start_time || 0,
+        endTime: data.end_time || 0,
+        isAutoRenew: !data.is_cancel_subscribe,
+        subscribeType: data.subscribe_type || '',
+        subscribeCycle: data.subscribe_cycle || 0,
+      };
+    } catch (error) {
+      logger.debug(`查询订阅信息失败: ${error}`);
+      return {
+        isVip: false,
+        vipLevel: '',
+        startTime: 0,
+        endTime: 0,
+        isAutoRenew: false,
+        subscribeType: '',
+        subscribeCycle: 0,
+      };
     }
   }
 

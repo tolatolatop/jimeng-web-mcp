@@ -19,8 +19,8 @@ const describeOrSkip = process.env.JIMENG_API_TOKEN ? describe : describe.skip; 
   it('Scenario 1: Sync mode preserves existing behavior', async () => {
     // Mock to return array of URLs
     jest.spyOn(imageGen, 'generateImage').mockResolvedValue([
-      'https://p9-dreamina-sign.byteimg.com/image1.jpg',
-      'https://p3-dreamina-sign.byteimg.com/image2.jpg'
+      'https://example.com/test-image1.jpg',
+      'https://example.com/test-image2.jpg'
     ]);
 
     const images = await imageGen.generateImage({

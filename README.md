@@ -458,7 +458,7 @@
   "historyIds": [
     "4761818115596",
     "4761818115597",
-    "1e06b3c9-bd41-46dd-8889-70f2c61f66bb"  // 视频ID
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"  // 视频ID
   ]
 }
 
@@ -466,7 +466,7 @@
 {
   "4761818115596": { "status": "completed", "imageUrls": [...] },
   "4761818115597": { "status": "processing", "progress": 45 },
-  "1e06b3c9-...": { "status": "completed", "videoUrl": "https://..." }
+  "aaaaaaaa-...": { "status": "completed", "videoUrl": "https://..." }
 }
 ```
 

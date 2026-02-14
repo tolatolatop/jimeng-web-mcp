@@ -324,7 +324,7 @@ chore(deps): upgrade axios to 1.9.0
   - `/mweb/v1/get_history_by_ids` - Task status query (history_ids for images, submit_ids for videos)
 
 **Image Hosting CDN**
-- Domain: `p3-osu-sign.byteimg.com`, `p9-osu-sign.byteimg.com`
+- Domain: ByteDance's image CDN
 - Protocol: HTTPS
 - Format: JPEG, PNG, WebP
 - Expiration: Generated URLs expire after ~24 hours

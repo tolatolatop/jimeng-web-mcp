@@ -595,6 +595,16 @@ export const createServer = (): McpServer => {
 
   logger.debug('credit tool registered successfully');
 
+  // ============== 积分历史工具 ==============
+
+  // 注意：此工具不注册为MCP tool（避免工具过多），但API已在NewJimengClient中暴露
+  // 如需查看积分历史，可通过 getApiClient().getCreditHistory() 调用
+
+  // ============== VIP订阅信息工具 ==============
+
+  // 注意：此工具不注册为MCP tool（避免工具过多），但API已在NewJimengClient中暴露
+  // 如需查看VIP信息，可通过 getApiClient().getSubscriptionInfo() 调用
+
   return server;
 };
 

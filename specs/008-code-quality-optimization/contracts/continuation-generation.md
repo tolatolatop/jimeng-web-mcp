@@ -47,7 +47,7 @@ assert(imageUrls.length === targetCount);
 // 2. 所有URL有效
 imageUrls.forEach(url => {
   assert(url.startsWith('https://'));
-  assert(url.includes('byteimg.com'));
+  assert(url.startsWith('https://'));
 });
 
 // 3. 无重复URL

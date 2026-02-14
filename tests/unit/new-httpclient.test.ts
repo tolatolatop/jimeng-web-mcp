@@ -32,13 +32,32 @@ describe('HttpClient (New Implementation)', () => {
   });
 
   describe('Request Parameter Generation', () => {
-    it('should generate request params with a_bogus', () => {
+    it('should generate request params with required fields', () => {
       const params = httpClient.generateRequestParams();
 
-      expect(params).toHaveProperty('aid');
+      expect(params).toHaveProperty('aid', 513695);
       expect(params).toHaveProperty('device_platform', 'web');
-      expect(params).toHaveProperty('web_id');
+      expect(params).toHaveProperty('webId');
       expect(params).toHaveProperty('babi_param');
+    });
+
+    it('should use lowercase region', () => {
+      const params = httpClient.generateRequestParams();
+      expect(params.region).toBe('cn');
+    });
+
+    it('should include web_version and da_version', () => {
+      const params = httpClient.generateRequestParams();
+      expect(params.web_version).toBe('7.5.0');
+      expect(params.da_version).toBe('3.3.9');
+      expect(params.aigc_features).toBe('app_lip_sync');
+    });
+
+    it('should generate babi_param with ref image context', () => {
+      const params = httpClient.generateRequestParams('jimeng-4.0', true);
+      const babiParam = JSON.parse(decodeURIComponent(params.babi_param));
+      expect(babiParam.feature_key).toBe('to_image_referenceimage_generate');
+      expect(babiParam.feature_entrance_detail).toBe('to_image-referenceimage-byte_edit');
     });
   });
 
