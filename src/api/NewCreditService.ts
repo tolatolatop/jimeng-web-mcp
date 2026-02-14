@@ -14,6 +14,15 @@ export interface CreditInfo {
   totalCredit: number;
 }
 
+export interface CreditReceiveResult {
+  /** 当前总积分余额 */
+  curTotalCredits: number;
+  /** 本次领取的积分数量 */
+  receiveQuota: number;
+  /** 是否首次领取 */
+  isFirstReceive: boolean;
+}
+
 /**
  * CreditService类（新版本 - 组合模式）
  */
@@ -59,12 +68,12 @@ export class NewCreditService {
   }
 
   /**
-   * 领取积分
+   * 领取积分并返回当前积分信息
+   * 此接口同时具备领取每日积分和查询当前总积分的功能
    */
-  async receiveCredit(): Promise<void> {
+  async receiveCredit(): Promise<CreditReceiveResult> {
     try {
-      // 积分领取API根据DevTools抓取：使用msToken+a_bogus参数（暂时保持简化版本）
-      const credit = await this.httpClient.request({
+      const response = await this.httpClient.request({
         method: 'POST',
         url: '/commerce/v1/benefits/credit_receive',
         data: { 'time_zone': 'Asia/Shanghai' },
@@ -72,20 +81,30 @@ export class NewCreditService {
       });
 
       // 检查返回状态
-      if (credit?.ret && credit.ret !== '0') {
-        if (credit.ret === '1014' && credit.errmsg === 'system busy') {
-          // console.log("🟡 积分系统繁忙，跳过积分领取（这通常不会影响图片生成）");
-          return; // 不抛错，继续执行
+      if (response?.ret && response.ret !== '0') {
+        if (response.ret === '1014' && response.errmsg === 'system busy') {
+          logger.debug('积分系统繁忙，跳过积分领取');
+          return { curTotalCredits: 0, receiveQuota: 0, isFirstReceive: false };
         } else {
-          // console.log(`⚠️ 积分领取异常: ret=${credit.ret}, errmsg=${credit.errmsg || '未知错误'}`);
-          return; // 不抛错，继续执行
+          logger.debug(`积分领取异常: ret=${response.ret}, errmsg=${response.errmsg || '未知错误'}`);
+          return { curTotalCredits: 0, receiveQuota: 0, isFirstReceive: false };
         }
       }
 
-      // console.log("✅ 积分领取成功", credit);
+      // 解析返回数据
+      const data = response?.data || {};
+      const result: CreditReceiveResult = {
+        curTotalCredits: data.cur_total_credits || 0,
+        receiveQuota: data.receive_quota || 0,
+        isFirstReceive: data.is_first_receive || false,
+      };
+
+      logger.debug(`积分领取成功: 当前总积分=${result.curTotalCredits}, 本次领取=${result.receiveQuota}`);
+      return result;
     } catch (error) {
-      // console.log("⚠️ 积分领取请求失败，但不影响图片生成:", (error as Error).message);
-      // 不抛错，允许图片生成继续进行
+      logger.debug(`积分领取请求失败: ${(error as Error).message}`);
+      // 不抛错，返回默认值
+      return { curTotalCredits: 0, receiveQuota: 0, isFirstReceive: false };
     }
   }
 

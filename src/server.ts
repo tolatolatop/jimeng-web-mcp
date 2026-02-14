@@ -551,6 +551,50 @@ export const createServer = (): McpServer => {
 
   logger.debug('video_mix tool registered successfully');
 
+  // ============== 积分工具 ==============
+
+  logger.debug('Registering credit tool...');
+
+  server.tool(
+    "credit",
+    "查询当前积分余额并领取每日免费积分",
+    {},
+    async () => {
+      try {
+        const client = getApiClient();
+
+        // 调用 credit_receive 接口，同时领取每日积分并获取当前总积分
+        const receiveResult = await client.receiveCredit();
+
+        // 获取详细积分分类
+        const creditInfo = await client.getCredit();
+
+        let text = `💰 积分信息\n\n`;
+        text += `📊 当前总积分: ${receiveResult.curTotalCredits || creditInfo.totalCredit}\n`;
+        text += `  🎁 赠送积分: ${creditInfo.giftCredit}\n`;
+        text += `  💳 购买积分: ${creditInfo.purchaseCredit}\n`;
+        text += `  👑 VIP积分: ${creditInfo.vipCredit}\n`;
+
+        if (receiveResult.receiveQuota > 0) {
+          text += `\n🎉 每日积分: ${receiveResult.isFirstReceive ? '首次领取' : '已领取'} ${receiveResult.receiveQuota} 积分`;
+        }
+
+        return {
+          content: [{ type: "text", text }]
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('credit tool failed', { error: errorMessage });
+        return {
+          content: [{ type: "text", text: `❌ 积分查询失败: ${errorMessage}` }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  logger.debug('credit tool registered successfully');
+
   return server;
 };
 

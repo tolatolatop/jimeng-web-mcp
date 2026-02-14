@@ -4,7 +4,7 @@
  */
 
 import { jest, describe, it, expect, beforeAll, beforeEach, afterEach } from '@jest/globals';
-import { NewCreditService, InsufficientCreditsError } from '../../src/api/NewCreditService.js';
+import { NewCreditService, InsufficientCreditsError, CreditReceiveResult } from '../../src/api/NewCreditService.js';
 import { HttpClient } from '../../src/api/HttpClient.js';
 
 describe('NewCreditService (Composition Pattern)', () => {
@@ -133,6 +133,89 @@ describe('NewCreditService (Composition Pattern)', () => {
     it('should return false when credits are insufficient', async () => {
       const result = await creditService.hasEnoughCredits(100);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('receiveCredit', () => {
+    it('should return credit receive result on success', async () => {
+      mockRequest.mockResolvedValue({
+        ret: '0',
+        errmsg: 'success',
+        data: {
+          is_first_receive: false,
+          receive_quota: 60,
+          has_popup: true,
+          cur_total_credits: 3584
+        }
+      });
+
+      const result: CreditReceiveResult = await creditService.receiveCredit();
+
+      expect(result.curTotalCredits).toBe(3584);
+      expect(result.receiveQuota).toBe(60);
+      expect(result.isFirstReceive).toBe(false);
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          url: '/commerce/v1/benefits/credit_receive',
+          data: { time_zone: 'Asia/Shanghai' }
+        })
+      );
+    });
+
+    it('should return first receive info', async () => {
+      mockRequest.mockResolvedValue({
+        ret: '0',
+        errmsg: 'success',
+        data: {
+          is_first_receive: true,
+          receive_quota: 80,
+          has_popup: true,
+          cur_total_credits: 80
+        }
+      });
+
+      const result = await creditService.receiveCredit();
+
+      expect(result.curTotalCredits).toBe(80);
+      expect(result.receiveQuota).toBe(80);
+      expect(result.isFirstReceive).toBe(true);
+    });
+
+    it('should return defaults when system busy (ret=1014)', async () => {
+      mockRequest.mockResolvedValue({
+        ret: '1014',
+        errmsg: 'system busy'
+      });
+
+      const result = await creditService.receiveCredit();
+
+      expect(result.curTotalCredits).toBe(0);
+      expect(result.receiveQuota).toBe(0);
+      expect(result.isFirstReceive).toBe(false);
+    });
+
+    it('should return defaults on network error without throwing', async () => {
+      mockRequest.mockRejectedValue(new Error('Network error'));
+
+      const result = await creditService.receiveCredit();
+
+      expect(result.curTotalCredits).toBe(0);
+      expect(result.receiveQuota).toBe(0);
+      expect(result.isFirstReceive).toBe(false);
+    });
+
+    it('should handle missing data field gracefully', async () => {
+      mockRequest.mockResolvedValue({
+        ret: '0',
+        errmsg: 'success'
+      });
+
+      const result = await creditService.receiveCredit();
+
+      expect(result.curTotalCredits).toBe(0);
+      expect(result.receiveQuota).toBe(0);
+      expect(result.isFirstReceive).toBe(false);
     });
   });
 

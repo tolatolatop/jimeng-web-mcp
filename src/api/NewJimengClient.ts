@@ -10,7 +10,7 @@
 
 import { HttpClient } from "./HttpClient.js";
 import { ImageUploader } from "./ImageUploader.js";
-import { NewCreditService } from "./NewCreditService.js";
+import { NewCreditService, CreditReceiveResult } from "./NewCreditService.js";
 import { VideoService } from "./VideoService.js";
 import { CacheManager } from "../utils/cache-manager.js";
 import { logger } from "../utils/logger.js";
@@ -794,9 +794,9 @@ export class NewJimengClient {
   }
 
   /**
-   * 领取积分
+   * 领取积分并返回当前积分信息
    */
-  async receiveCredit(): Promise<void> {
+  async receiveCredit(): Promise<CreditReceiveResult> {
     return this.creditService.receiveCredit();
   }
 

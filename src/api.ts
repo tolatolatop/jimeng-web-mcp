@@ -342,7 +342,7 @@ export { getApiClient };
 export { HttpClient } from './api/HttpClient.js';
 export { ImageUploader } from './api/ImageUploader.js';
 export { VideoService } from './api/VideoService.js';
-export { NewCreditService } from './api/NewCreditService.js';
+export { NewCreditService, type CreditReceiveResult } from './api/NewCreditService.js';
 
 // VideoGenerator removed - use VideoService instead from new implementation
 
