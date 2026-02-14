@@ -1,12 +1,13 @@
 /**
  * VideoService - 统一视频生成服务
- * 合并4个独立生成器的功能（TextToVideo, MultiFrame, MainReference）
+ * 合并4个独立生成器的功能（TextToVideo, MultiFrame, MainReference, Seedance）
  * 内联轮询逻辑（≤30行），移除timeout.ts依赖
- * 使用组合模式，依赖HttpClient和ImageUploader
+ * 使用组合模式，依赖HttpClient、ImageUploader和VideoUploader
  */
 
 import { HttpClient } from './HttpClient.js';
 import { ImageUploader } from './ImageUploader.js';
+import { VideoUploader } from './VideoUploader.js';
 import { getModel } from '../types/models.js';
 import { logger } from '../utils/logger.js';
 
@@ -63,14 +64,41 @@ export interface MainReferenceParams {
 }
 
 /**
+ * Seedance 2.0 参考素材定义
+ */
+export interface SeedanceMaterial {
+  type: 'image' | 'video';
+  filePath: string;  // 本地文件路径或URL
+}
+
+/**
+ * Seedance 2.0 视频生成参数
+ * 支持图片+视频混合参考
+ */
+export interface SeedanceParams {
+  prompt: string;
+  materials: SeedanceMaterial[];  // 参考素材列表（图片和/或视频）
+  model?: string;                 // 默认 seedance-2.0
+  resolution?: '720p' | '1080p';
+  fps?: number;
+  duration?: number;
+  async?: boolean;
+  videoAspectRatio?: string;
+}
+
+/**
  * VideoService类
  * 整合所有视频生成功能
  */
 export class VideoService {
+  private videoUploader: VideoUploader;
+
   constructor(
     private httpClient: HttpClient,
     private imageUploader: ImageUploader
-  ) {}
+  ) {
+    this.videoUploader = new VideoUploader(httpClient);
+  }
 
   // ==================== 公共方法：三种视频生成模式 ====================
 
@@ -577,6 +605,237 @@ export class VideoService {
       videoUrl,
       metadata: { model, resolution, duration, fps }
     };
+  }
+
+  /**
+   * Seedance 2.0 视频生成（图+视频混合参考）
+   * 使用 unified_edit_input 格式，支持 image + video 混合 material_list
+   */
+  async generateSeedance(params: SeedanceParams): Promise<VideoResult> {
+    const {
+      prompt,
+      materials,
+      async: asyncMode = true,
+      resolution = '720p',
+      fps = 24,
+      duration = 5000,
+      model = 'seedance-2.0',
+      videoAspectRatio = '16:9'
+    } = params;
+
+    // 参数验证
+    if (!materials || materials.length === 0) {
+      throw new Error('至少需要提供1个参考素材（图片或视频）');
+    }
+    if (materials.length > 4) {
+      throw new Error('最多支持4个参考素材');
+    }
+    if (duration < 3000 || duration > 15000) {
+      throw new Error('duration必须在3000-15000毫秒之间');
+    }
+
+    const actualModel = getModel(model);
+
+    // 上传所有素材（图片和视频分别处理）
+    const materialList: any[] = [];
+    for (const mat of materials) {
+      if (mat.type === 'image') {
+        const uploadResult = await this.imageUploader.upload(mat.filePath);
+        materialList.push({
+          type: "",
+          id: this.generateUuid(),
+          material_type: "image",
+          image_info: {
+            type: "image",
+            id: this.generateUuid(),
+            source_from: "upload",
+            platform_type: 1,
+            name: "",
+            image_uri: uploadResult.uri,
+            aigc_image: {
+              type: "",
+              id: this.generateUuid(),
+            },
+            width: uploadResult.width,
+            height: uploadResult.height,
+            format: uploadResult.format || "",
+            uri: uploadResult.uri,
+          }
+        });
+      } else if (mat.type === 'video') {
+        const uploadResult = await this.videoUploader.upload(mat.filePath);
+        materialList.push({
+          type: "",
+          id: this.generateUuid(),
+          material_type: "video",
+          video_info: {
+            type: "video",
+            id: this.generateUuid(),
+            source_from: "upload",
+            name: "",
+            vid: uploadResult.vid,
+            fps: 0,
+            width: uploadResult.width,
+            height: uploadResult.height,
+            duration: uploadResult.duration,
+          }
+        });
+      } else {
+        throw new Error(`不支持的素材类型: ${mat.type}，仅支持 image 和 video`);
+      }
+    }
+
+    // 构建 meta_list（文本提示词）
+    const metaList: any[] = [];
+    if (prompt.trim()) {
+      metaList.push({
+        meta_type: "text",
+        text: prompt.trim()
+      });
+    }
+
+    // 构建 draft_content
+    const componentId = this.generateUuid();
+    const submitId = this.generateUuid();
+
+    // 确定 benefit_type
+    const hasVideo = materials.some(m => m.type === 'video');
+    const benefitType = hasVideo
+      ? 'dreamina_seedance_20_fast_with_video'
+      : 'dreamina_seedance_20_fast';
+
+    const metricsExtra = {
+      isDefaultSeed: 1,
+      originSubmitId: submitId,
+      isRegenerate: false,
+      enterFrom: "reprompt",
+      position: "page_bottom_box",
+      functionMode: "omni_reference",
+      sceneOptions: JSON.stringify([{
+        type: "video",
+        scene: "BasicVideoGenerateButton",
+        modelReqKey: actualModel,
+        videoDuration: Math.round(duration / 1000),
+        reportParams: {
+          enterSource: "generate",
+          vipSource: "generate",
+          extraVipFunctionKey: actualModel,
+          useVipFunctionDetailsReporterHoc: true
+        },
+        materialTypes: this.getMaterialTypeFlags(materials),
+      }])
+    };
+
+    const draftContent = {
+      type: "draft",
+      id: this.generateUuid(),
+      min_version: "3.3.9",
+      min_features: ["AIGC_Video_UnifiedEdit"],
+      is_from_tsn: true,
+      version: "3.3.9",
+      main_component_id: componentId,
+      component_list: [{
+        type: "video_base_component",
+        id: componentId,
+        min_version: "1.0.0",
+        aigc_mode: "workbench",
+        metadata: {
+          type: "",
+          id: this.generateUuid(),
+          created_platform: 3,
+          created_platform_version: "",
+          created_time_in_ms: Date.now().toString(),
+          created_did: ""
+        },
+        generate_type: "gen_video",
+        abilities: {
+          type: "",
+          id: this.generateUuid(),
+          gen_video: {
+            type: "",
+            id: this.generateUuid(),
+            text_to_video_params: {
+              type: "",
+              id: this.generateUuid(),
+              video_gen_inputs: [{
+                type: "",
+                id: this.generateUuid(),
+                min_version: "3.3.9",
+                prompt: "",  // prompt 放在 meta_list 中
+                video_mode: 2,
+                fps: fps,
+                duration_ms: duration,
+                idip_meta_list: [],  // Seedance 2.0 不使用 idip_meta_list
+                unified_edit_input: {
+                  type: "",
+                  id: this.generateUuid(),
+                  material_list: materialList,
+                  meta_list: metaList,
+                }
+              }],
+              video_aspect_ratio: videoAspectRatio,
+              seed: Math.floor(Math.random() * 100000000) + 2500000000,
+              model_req_key: actualModel,
+              priority: 0,
+            },
+            video_task_extra: JSON.stringify(metricsExtra),
+          }
+        },
+        process_type: 1
+      }]
+    };
+
+    const requestBody = {
+      extend: {
+        root_model: actualModel,
+        m_video_commerce_info: {
+          benefit_type: benefitType,
+          resource_id: "generate_video",
+          resource_id_type: "str",
+          resource_sub_type: "aigc"
+        },
+        m_video_commerce_info_list: [{
+          benefit_type: benefitType,
+          resource_id: "generate_video",
+          resource_id_type: "str",
+          resource_sub_type: "aigc"
+        }]
+      },
+      submit_id: submitId,
+      metrics_extra: JSON.stringify(metricsExtra),
+      draft_content: JSON.stringify(draftContent),
+      http_common_info: { aid: 513695 }
+    };
+
+    // 提交任务
+    const taskId = await this.submitTaskWithDraft(requestBody);
+
+    if (asyncMode) {
+      return {
+        taskId,
+        metadata: { model, resolution, duration, fps }
+      };
+    }
+
+    // 同步模式：轮询
+    const videoUrl = await this.pollUntilComplete(taskId);
+    return {
+      videoUrl,
+      metadata: { model, resolution, duration, fps }
+    };
+  }
+
+  /**
+   * 获取素材类型标识数组（用于 sceneOptions.materialTypes）
+   * 1=image, 2=video
+   */
+  private getMaterialTypeFlags(materials: SeedanceMaterial[]): number[] {
+    const flags = new Set<number>();
+    for (const m of materials) {
+      if (m.type === 'image') flags.add(1);
+      if (m.type === 'video') flags.add(2);
+    }
+    return Array.from(flags).sort();
   }
 
   // ==================== 私有方法：共享逻辑 ====================

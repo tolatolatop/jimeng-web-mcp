@@ -455,6 +455,62 @@ export const createServer = (): McpServer => {
 
   logger.debug('video_mix tool registered successfully');
 
+  // ============== Seedance 2.0 视频工具 ==============
+
+  logger.debug('Registering video_seedance tool...');
+
+  server.tool(
+    "video_seedance",
+    "Seedance 2.0 智能参考视频 - 支持图片+视频混合参考生成新视频。这是最强大的视频生成模式，可以同时参考图片（角色外观、场景风格）和视频（动作节奏、镜头运动），让AI理解并融合所有参考素材生成新视频。典型场景：(1)给图片角色添加视频中的动作 (2)用图片的角色替换视频中的人物 (3)纯图片参考生成视频。每个素材需指定type为image或video。",
+    {
+      prompt: z.string().min(1).describe("视频描述文本。描述期望的视频内容、动作、场景。示例：\"参考角色，替换掉视频中的人物\" 或 \"让图片中的角色做出视频中的舞蹈动作\""),
+      materials: z.array(z.object({
+        type: z.enum(["image", "video"]).describe("素材类型: image=图片文件, video=视频文件"),
+        filePath: z.string().min(1).describe("素材文件的本地绝对路径。图片支持jpg/png/webp，视频支持mp4/mov/webm"),
+      })).min(1).max(4).describe("参考素材列表（1-4个）。可以是纯图片、纯视频、或图片+视频混合。示例：[{type:\"image\",filePath:\"/path/character.jpg\"},{type:\"video\",filePath:\"/path/dance.mp4\"}]"),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待完成后返回视频URL"),
+      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("视频分辨率: 720p(默认) 或 1080p"),
+      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比: 16:9(默认)/9:16(竖屏)/1:1(方形)/4:3/3:4/21:9"),
+      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)，默认24fps"),
+      duration: z.number().min(3000).max(15000).optional().default(5000).describe("视频时长（毫秒），3000-15000，默认5000(5秒)"),
+      model: z.string().optional().default("seedance-2.0").describe("视频模型: seedance-2.0(默认,最新Seedance 2.0模型)")
+    },
+    async (params: any) => {
+      try {
+        const client = getApiClient();
+        const result = await client.generateSeedanceVideo(params);
+
+        const materialSummary = params.materials
+          .map((m: any, i: number) => `${i}: ${m.type}`)
+          .join(', ');
+
+        if (result.taskId) {
+          return {
+            content: [{
+              type: "text",
+              text: `✅ Seedance 2.0 视频任务已提交！\n\n📋 任务ID: ${result.taskId}\n🎯 素材: [${materialSummary}]\n🎬 时长: ${params.duration / 1000}秒\n\n💡 使用 query 工具查询状态`
+            }]
+          };
+        } else {
+          return {
+            content: [{
+              type: "text",
+              text: `✅ Seedance 2.0 视频生成完成\n\n🎥 视频URL: ${result.videoUrl}\n🎯 素材: [${materialSummary}]`
+            }]
+          };
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `❌ Seedance 2.0 视频生成失败: ${errorMessage}` }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  logger.debug('video_seedance tool registered successfully');
+
   // ============== 积分工具 ==============
 
   logger.debug('Registering credit tool...');

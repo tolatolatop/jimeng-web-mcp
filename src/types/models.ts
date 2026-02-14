@@ -30,7 +30,10 @@ export const MODEL_MAP: Record<string, string> = {
   'jimeng-video-2.0': 'dreamina_ic_generate_video_model_vgfm_lite',
   'jimeng-video-2.0-pro': 'dreamina_ic_generate_video_model_vgfm1.0',
   // 智能多帧视频模型
-  'jimeng-video-multiframe': 'dreamina_ic_generate_video_model_vgfm_3.0'
+  'jimeng-video-multiframe': 'dreamina_ic_generate_video_model_vgfm_3.0',
+  // Seedance 2.0 视频模型（图+视频混合参考）
+  'seedance-2.0': 'dreamina_seedance_40',
+  'seedance-2.0-fast': 'dreamina_seedance_40',
 };
 
 // ============== 默认常量 ==============

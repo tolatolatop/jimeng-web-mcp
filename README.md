@@ -554,139 +554,161 @@ npm run start:api
 
 ---
 
-## 🚀 Seedance 2.0 接口说明
+## 🚀 Seedance 2.0 使用指南
 
-即梦 Web 端已上线 Seedance 2.0 视频生成模型，相比之前的视频模型有显著改进。以下记录已确认的接口差异和调用方式。
+即梦 Web 端已上线 Seedance 2.0 视频生成模型，支持图文引用、视频引用和多种生成模式。以下说明如何使用本项目的 MCP 工具实现 Seedance 2.0 的各种场景。
 
-### 当前已适配
+### 场景对照表
 
-本项目已根据 Web 端实际请求格式进行了以下适配：
+| Seedance 2.0 场景 | 对应 MCP 工具 | 支持状态 | 说明 |
+|-------------------|-------------|---------|------|
+| 纯文字生成视频 | `video` | ✅ 已支持 | 直接描述即可生成 |
+| 图生视频（首帧驱动） | `video_frame` | ✅ 已支持 | 提供首帧图片 + 描述 |
+| 尾帧控制 | `video_frame` | ✅ 已支持 | 提供尾帧图片 + 描述 |
+| 首尾帧控制 | `video_frame` | ✅ 已支持 | 同时提供首尾帧 |
+| 多关键帧动画 | `video_multi` | ✅ 已支持 | 2-10个关键帧精确控制 |
+| 多图主体融合 | `video_mix` | ✅ 已支持 | [图0][图1]语法组合主体 |
+| 视频引用生成 | — | ❌ 未适配 | Seedance 2.0 新增能力 |
+| 图片+视频混合引用 | — | ❌ 未适配 | Seedance 2.0 新增能力 |
 
-#### 1. 请求参数对齐
+### 场景1：纯文字生成视频
 
-`HttpClient.generateRequestParams()` 已对齐 Web 端实际参数：
+**Web 端操作**：在 Seedance 2.0 页面直接输入文字描述
 
-```typescript
+**MCP 调用**：使用 `video` 工具
+```json
 {
-  "aid": 513695,              // 应用ID（数字类型）
-  "device_platform": "web",
-  "region": "cn",             // 小写
-  "webId": "...",             // camelCase
-  "web_version": "7.5.0",    // Web客户端版本
-  "da_version": "3.3.9",     // 数据分析版本
-  "aigc_features": "app_lip_sync"  // 功能特性标记
+  "prompt": "一位女孩站在樱花树下，花瓣飘落，微风吹动头发，柔和的自然光，电影感画面",
+  "resolution": "1080p",
+  "duration": 5000,
+  "videoAspectRatio": "16:9",
+  "async": true
 }
 ```
 
-#### 2. 图片上传审核
+### 场景2：图生视频（图片动起来）
 
-上传图片后自动调用审核接口，确保内容合规：
+**Web 端操作**：上传一张图片作为首帧，Seedance 2.0 让图片"动起来"
 
-```typescript
-// ImageUploader.upload() 流程：
-// 1. ApplyImageUpload     — 申请上传凭证
-// 2. UploadFile           — 上传文件数据
-// 3. CommitImageUpload    — 确认上传
-// 4. submitAuditJob       — 提交内容审核（新增）
-//    POST /mweb/v1/imagex/submit_audit_job
-//    Body: { image_uri: "tos-cn-i-xxx/..." }
-```
-
-#### 3. 任务队列查询
-
-新增 `getQueueInfo()` 方法，用于获取任务的详细队列信息：
-
-```typescript
-const client = getApiClient();
-const queueInfo = await client.getQueueInfo(["task-id-1", "task-id-2"]);
-// POST /mweb/v1/get_history_queue_info
-// Body: { submit_ids: [...], history_ids: [...] }
-```
-
-### Seedance 2.0 未适配功能
-
-以下是 Web 端已使用但本项目尚未实现的 Seedance 2.0 特性：
-
-#### 1. unified_edit_input 请求格式
-
-Seedance 2.0 使用全新的生成请求结构：
-
+**MCP 调用**：使用 `video_frame` 工具，仅提供 `firstFrameImage`
 ```json
 {
-  "submit_id": "uuid",
-  "task_extra": { "...": "..." },
-  "http_common_info": { "aid": 513695 },
-  "input": {
-    "seed": -1,
-    "video_mode": "general_model",
-    "unified_edit_input": {
-      "common_input": {
-        "model_name": "seedance-2-0",
-        "generate_type": "generate"
-      },
-      "text_prompt": {
-        "text_prompt": "视频描述文字"
-      },
-      "output_params": {
-        "video_length_frames": 153,
-        "fps": 24,
-        "resolution": { "width": 1280, "height": 720 }
-      }
+  "prompt": "女孩缓缓转头微笑，樱花花瓣从画面左侧飘过，镜头轻微推进",
+  "firstFrameImage": "/path/to/girl-under-sakura.jpg",
+  "resolution": "1080p",
+  "duration": 5000,
+  "async": true
+}
+```
+
+### 场景3：首尾帧精确控制
+
+**Web 端操作**：同时上传首帧和尾帧图片，Seedance 2.0 生成中间过渡
+
+**MCP 调用**：使用 `video_frame` 工具，同时提供两张图片
+```json
+{
+  "prompt": "从白天到夜晚的城市延时摄影，天空逐渐变暗，建筑灯光亮起，车流形成光轨",
+  "firstFrameImage": "/path/to/city-day.jpg",
+  "lastFrameImage": "/path/to/city-night.jpg",
+  "resolution": "1080p",
+  "duration": 8000,
+  "async": true
+}
+```
+
+### 场景4：多关键帧动画
+
+**Web 端操作**：上传多个画面作为关键帧，Seedance 2.0 在帧间生成平滑过渡
+
+**MCP 调用**：使用 `video_multi` 工具
+```json
+{
+  "frames": [
+    {
+      "idx": 0,
+      "imagePath": "/path/to/frame0-cat-sit.jpg",
+      "duration_ms": 2000,
+      "prompt": "镜头从正面缓慢推进，猫从坐姿站起，耳朵竖起，尾巴轻摆"
+    },
+    {
+      "idx": 1,
+      "imagePath": "/path/to/frame1-cat-walk.jpg",
+      "duration_ms": 2000,
+      "prompt": "猫向前迈步行走，步伐轻盈，背景虚化效果增强"
+    },
+    {
+      "idx": 2,
+      "imagePath": "/path/to/frame2-cat-jump.jpg",
+      "duration_ms": 1000,
+      "prompt": "结束帧，此prompt不生效"
     }
-  }
+  ],
+  "resolution": "720p",
+  "fps": 24,
+  "async": true
 }
 ```
 
-#### 2. 混合图片/视频引用
+> **提示**：每帧的 `prompt` 描述的是从当前帧到下一帧的过渡过程（镜头运动、主体动作）。最后一帧的 prompt 不会生效。
 
-Seedance 2.0 支持在同一生成请求中混合引用图片和视频：
+### 场景5：多图主体融合
 
+**Web 端操作**：上传多张图片，Seedance 2.0 将不同图片的主体组合到一个场景
+
+**MCP 调用**：使用 `video_mix` 工具
 ```json
 {
-  "unified_edit_input": {
-    "visual_prompt": {
-      "visual_list": [
-        {
-          "media_type": "image",
-          "url": "tos-cn-i-xxx/...",
-          "sub_type": "first_frame"
-        },
-        {
-          "media_type": "video",
-          "url": "tos-cn-v-xxx/...",
-          "sub_type": "reference"
-        }
-      ]
-    }
-  }
+  "referenceImages": [
+    "/path/to/golden-retriever.jpg",
+    "/path/to/beach-sunset.jpg",
+    "/path/to/frisbee.jpg"
+  ],
+  "prompt": "[图0]的金毛犬在[图1]的海滩上奔跑，嘴里叼着[图2]的飞盘，夕阳余晖洒在海面上",
+  "resolution": "1080p",
+  "duration": 5000,
+  "async": true
 }
 ```
 
-#### 3. 视频文件上传
+> **语法说明**：`[图0]`、`[图1]`、`[图2]` 按 referenceImages 数组顺序引用。索引从0开始，最多4张。
 
-视频上传流程与图片不同，使用独立的凭证和存储桶：
+### 场景6：异步任务查询
 
-```
-POST /mweb/v1/video/get_upload_token  — 获取视频上传凭证
-PUT  https://tos-d-x-lf.snssdk.com/upload/v1/tos-cn-v-xxx/...  — 上传视频文件
-POST /mweb/v1/video/commit_upload  — 确认视频上传
-```
-
-#### 4. 改进的轮询状态
-
-Seedance 2.0 返回更丰富的队列信息：
+所有视频工具默认异步模式，提交后需要用 `query` 工具轮询结果：
 
 ```json
-{
-  "queue_info": {
-    "queue_len": 5,
-    "queue_position": 2,
-    "estimated_wait_seconds": 120
-  }
-}
+// 第一步：提交生成任务，获得任务ID
+// → "任务ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+// 第二步：查询任务状态
+{ "historyId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }
+
+// → 生成中：{ status: "processing", progress: 45 }
+// → 生成完成：{ status: "completed", videoUrl: "https://..." }
 ```
 
-> 以上未适配功能记录于此作为后续开发参考。欢迎社区贡献 PR 来完善 Seedance 2.0 支持。
+### Seedance 2.0 未适配功能（路线图）
+
+以下是 Web 端 Seedance 2.0 已支持但本项目尚未实现的新能力：
+
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| **视频引用生成** | 上传视频作为参考，生成相似风格/运镜的新视频 | 🔜 规划中 |
+| **图片+视频混合引用** | 在同一请求中同时引用图片和视频素材 | 🔜 规划中 |
+| **视频文件上传** | 独立的视频上传流程（不同于图片上传） | 🔜 规划中 |
+| **队列进度预估** | 返回排队位置和预估等待时间 | 🔜 规划中 |
+
+**技术细节**（开发者参考）：
+
+Seedance 2.0 使用了全新的 `unified_edit_input` 请求格式和 `seedance-2-0` 模型标识，与当前项目使用的 `jimeng-video-3.0` 请求格式不同。主要差异：
+
+- **请求结构**：`unified_edit_input.common_input.model_name = "seedance-2-0"` 替代旧的 `video_mode` 字段
+- **引用方式**：`visual_prompt.visual_list` 支持混合 `media_type: "image"` 和 `media_type: "video"` 引用
+- **视频上传**：使用独立的 `/mweb/v1/video/get_upload_token` + `/mweb/v1/video/commit_upload` 流程
+- **状态轮询**：返回 `queue_info.queue_position` 和 `estimated_wait_seconds` 等增强字段
+
+> 欢迎社区贡献 PR 来完善 Seedance 2.0 适配。
 
 ---
 

@@ -732,6 +732,13 @@ export class NewJimengClient {
   }
 
   /**
+   * Seedance 2.0 视频生成（图+视频混合参考）
+   */
+  async generateSeedanceVideo(params: any): Promise<any> {
+    return this.videoService.generateSeedance(params);
+  }
+
+  /**
    * 查询视频生成结果（单个）
    */
   async queryVideoResult(submitId: string): Promise<any> {

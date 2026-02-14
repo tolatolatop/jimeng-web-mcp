@@ -341,7 +341,9 @@ export { getApiClient };
  */
 export { HttpClient } from './api/HttpClient.js';
 export { ImageUploader } from './api/ImageUploader.js';
+export { VideoUploader } from './api/VideoUploader.js';
 export { VideoService } from './api/VideoService.js';
+export type { SeedanceParams, SeedanceMaterial } from './api/VideoService.js';
 export { NewCreditService, type CreditReceiveResult, type CreditHistoryResult, type CreditHistoryRecord, type SubscriptionInfo } from './api/NewCreditService.js';
 
 // VideoGenerator removed - use VideoService instead from new implementation
