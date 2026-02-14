@@ -35,9 +35,9 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "ping",
-    "测试服务器连接",
+    "测试即梦MCP服务器连接是否正常。返回问候语表示服务可用。",
     {
-      name: z.string().describe("姓名")
+      name: z.string().describe("你的名字，用于问候")
     },
     async ({ name }) => ({
       content: [{ type: "text", text: `你好，${name}！JiMeng MCP 服务器运行正常。` }]
@@ -48,44 +48,21 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "image",
-    "生成单张图像",
+    "生成单张图像（支持智能多图）。prompt中包含数量描述（如\"生成9张图片\"）时自动识别并生成对应数量，超过4张自动触发继续生成。支持最多4张参考图进行风格混合。同步模式直接返回图片URL，异步模式返回任务ID后用query查询。",
     {
-      filePath: z.array(z.string()).optional().describe("参考图绝对路径数组，最多4张"),
-      prompt: z.string().describe("图像描述文本"),
-      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认), jimeng-3.1, jimeng-3.0"),
-      aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
-      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
-      sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
-      negative_prompt: z.string().optional().default("").describe("负向提示词"),
-      reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组"),
-      async: z.boolean().optional().default(false).describe("是否异步模式，默认false（同步）"),
+      prompt: z.string().describe("图像描述文本。可包含数量要求如\"生成9张不同角度的猫\"，系统会自动识别数量并一次性返回全部结果"),
+      filePath: z.array(z.string()).optional().describe("参考图绝对路径数组（最多4张）。提供后生成的图片会参考这些图的风格/内容。支持本地绝对路径"),
+      model: z.string().optional().describe("图片模型。可选: jimeng-4.5(最新默认), jimeng-4.1, jimeng-4.0, jimeng-3.1, jimeng-3.0, jimeng-2.1, jimeng-2.0-pro"),
+      aspectRatio: z.string().optional().default("auto").describe("宽高比: auto(智能)/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
+      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("输出分辨率: 2k(默认,2048px级) 或 4k(4096px级)"),
+      sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图整体影响强度(0-1)。0=完全忽略参考图，1=强烈参考，默认0.5"),
+      negative_prompt: z.string().optional().default("").describe("负向提示词，描述不想出现的元素，如\"模糊、低质量、变形\""),
+      reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组，长度应与filePath一致。如[0.7, 0.3]表示第一张参考图强度0.7，第二张0.3"),
+      async: z.boolean().optional().default(false).describe("是否异步模式。false(默认)=等待生成完成直接返回URL; true=立即返回任务ID，后续用query工具查询结果"),
     },
     async (params) => {
-      // 🔥 [MCP DEBUG] Tool call entry point - this is the CRITICAL debugging point
-      logger.debug('=================================');
-      logger.debug('generateImage tool called!');
-      logger.debug('Timestamp', { timestamp: new Date().toISOString() });
-      logger.debug('Raw params received', { params: JSON.stringify(params, null, 2) });
-      logger.debug('=================================');
+      logger.debug('image tool called', { params: JSON.stringify(params, null, 2) });
       try {
-        // 🔇 [MCP] console.log已禁用 - MCP协议使用stdio，任何输出都会破坏JSON-RPC通信
-        // console.log('🔍 [MCP Server] Received raw parameters:', JSON.stringify(params, null, 2));
-
-        const hasToken = !!process.env.JIMENG_API_TOKEN;
-        // console.log('🔍 [MCP Server] Environment token available:', hasToken);
-        // if (hasToken) {
-        //   console.log('🔍 [MCP Server] Token length:', process.env.JIMENG_API_TOKEN?.length);
-        // }
-
-        // console.log('🔍 [MCP Server] Validated parameters for API call:');
-        // console.log('  - filePath:', params.filePath || 'undefined');
-        // console.log('  - prompt:', params.prompt ? `"${params.prompt.substring(0, 50)}..."` : 'undefined');
-        // console.log('  - model:', params.model || 'undefined');
-        // console.log('  - aspectRatio:', params.aspectRatio || 'undefined');
-        // console.log('  - sample_strength:', params.sample_strength);
-        // console.log('  - negative_prompt:', params.negative_prompt || 'empty');
-        // console.log('  - reference_strength:', params.reference_strength ? `[${params.reference_strength.join(', ')}]` : 'undefined');
-
         const imageUrls: string[] | string = await generateImage({
           filePath: params.filePath,
           prompt: params.prompt,
@@ -128,25 +105,8 @@ export const createServer = (): McpServer => {
           }]
         };
       } catch (error) {
-        // 🔍 Debug logging - 记录详细错误信息 (使用logger以避免破坏stdio)
-        logger.debug('🔍 [MCP Server] Error caught in generateImage tool');
-        logger.debug(`🔍 [MCP Server] Error type: ${error?.constructor?.name}`);
-        logger.debug(`🔍 [MCP Server] Error message: ${error instanceof Error ? error.message : String(error)}`);
-        if (error instanceof Error && error.stack) {
-          logger.debug(`🔍 [MCP Server] Error stack: ${error.stack}`);
-        }
-
-        // 🔍 记录错误时的参数状态
-        logger.debug(`🔍 [MCP Server] Parameters when error occurred: ${JSON.stringify({
-          filePath: params.filePath,
-          prompt: params.prompt ? `${params.prompt.substring(0, 100)}...` : undefined,
-          model: params.model,
-          aspectRatio: params.aspectRatio,
-          sample_strength: params.sample_strength,
-          negative_prompt: params.negative_prompt
-        }, null, 2)}`);
-
         const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('image tool failed', { error: errorMessage });
         return {
           content: [{ type: "text", text: `图像生成失败: ${errorMessage}` }],
           isError: true
@@ -157,22 +117,20 @@ export const createServer = (): McpServer => {
 
   logger.debug('image tool registered successfully');
 
-  logger.debug('Registering image_batch tool...');
-
   server.tool(
     "image_batch",
-    "系列图片生成 - 用于生成高相关性的连续图片（如：房间系列、故事分镜、绘本画面、产品多角度）",
+    "系列图片批量生成 - 专用于生成高相关性的连续图片。适合：同一房子不同空间（客厅/卧室/厨房）、故事连续分镜、绘本多页画面、产品多角度展示。所有图片共享统一风格，每张图只描述差异部分。最终prompt格式为\"basePrompt 第1张：xxx 第2张：yyy，一共N张图\"。超过4张自动触发继续生成。",
     {
-      prompts: z.array(z.string()).min(1).max(15).describe("每张图片的完整描述数组（1-15个）。⚠️重要：每个描述应该是一小段话（不是单个词），重点描述该图与其他图的差异部分。示例：[\"现代客厅，灰色沙发靠窗，阳光洒入\", \"温馨卧室，米色床品，木质床头柜\"]"),
-      basePrompt: z.string().optional().default("").describe("整体通用描述，会添加在最终prompt最前面。用于描述：产品基础信息（材质、颜色）、房子整体风格（三室两厅现代简约）、故事背景设定（赛博朋克世界观）等通用信息。示例：\"三室两厅现代简约风格，木地板，暖色调照明\""),
-      async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      filePath: z.array(z.string()).optional().describe("可选参考图路径（影响整体风格，最多4张）"),
-      aspectRatio: z.string().optional().default("auto").describe("宽高比: auto/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
-      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("分辨率选择，2k或4k，默认2k"),
-      model: z.string().optional().describe("模型名称，支持: jimeng-4.5, jimeng-4.1, jimeng-4.0 (默认)"),
-      sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图影响强度0-1，默认0.5"),
-      negative_prompt: z.string().optional().default("").describe("负向提示词"),
-      reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组"),
+      prompts: z.array(z.string()).min(1).max(15).describe("每张图片的差异描述数组（1-15个）。每个元素应是一小段话描述该图的独特内容，不是单个词。示例：[\"客厅，灰色布艺沙发靠窗，落地窗洒入阳光，茶几上放着杂志\", \"主卧室，米色床品整齐铺展，木质床头柜上有台灯\"]"),
+      basePrompt: z.string().optional().default("").describe("整体通用描述（可选），拼接在最终prompt最前面。用于统一风格，如：\"三室两厅现代简约风格，木地板，暖色调照明\" 或 \"苹果AirPods Pro 2代，白色陶瓷材质\""),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待全部图片生成完成后返回URL数组"),
+      filePath: z.array(z.string()).optional().describe("参考图绝对路径数组（最多4张），影响整体系列风格"),
+      aspectRatio: z.string().optional().default("auto").describe("宽高比: auto(智能)/1:1/16:9/9:16/3:4/4:3/3:2/2:3/21:9"),
+      resolution: z.enum(["2k", "4k"]).optional().default("2k").describe("输出分辨率: 2k(默认) 或 4k"),
+      model: z.string().optional().describe("图片模型。可选: jimeng-4.5(最新默认), jimeng-4.1, jimeng-4.0, jimeng-3.1, jimeng-3.0"),
+      sample_strength: z.number().min(0).max(1).optional().default(0.5).describe("参考图整体影响强度(0-1)，默认0.5"),
+      negative_prompt: z.string().optional().default("").describe("负向提示词，描述不想出现的元素"),
+      reference_strength: z.array(z.number().min(0).max(1)).optional().describe("每张参考图的独立强度数组，长度应与filePath一致"),
     },
     async (params) => {
       try {
@@ -234,9 +192,9 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "query",
-    "查询任务状态和结果",
+    "查询异步任务的状态和结果。支持图片任务（数字ID如\"4761818115596\"）和视频任务（UUID格式）。返回任务状态（pending/processing/completed/failed）、进度百分比，完成后返回图片URL数组或视频URL。",
     {
-      historyId: z.string().regex(/^([0-9]+|h[a-zA-Z0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i).describe("任务ID")
+      historyId: z.string().regex(/^([0-9]+|h[a-zA-Z0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i).describe("任务ID。图片任务为纯数字（如\"4761818115596\"），视频任务为UUID格式。由image/image_batch/video等工具在异步模式下返回")
     },
     async ({ historyId }) => {
       try {
@@ -306,75 +264,21 @@ export const createServer = (): McpServer => {
 
   logger.debug('query tool registered successfully');
 
-  // logger.debug('Registering query_batch tool...');
-
-  // server.tool(
-  //   "query_batch",
-  //   "批量查询多个任务",
-  //   {
-  //     historyIds: z.array(z.string().regex(/^([0-9]+|h[a-zA-Z0-9]+)$/)).max(10).describe("任务ID数组，最多10个")
-  //   },
-  //   async ({ historyIds }) => {
-  //     try {
-  //       const client = getApiClient();
-  //       const results = await client.getBatchResults(historyIds);
-
-  //       // 格式化响应
-  //       let resultText = `📊 批量查询结果 (${Object.keys(results).length}/${historyIds.length})\n\n`;
-
-  //       for (const [id, result] of Object.entries(results)) {
-  //         const typedResult = result as any; // Type assertion for DTS build
-  //         if ('error' in typedResult) {
-  //           resultText += `❌ ${id}: ${typedResult.error}\n\n`;
-  //         } else {
-  //           const statusEmoji = typedResult.status === 'completed' ? '✅' : typedResult.status === 'failed' ? '❌' : '🔄';
-  //           resultText += `${statusEmoji} ${id}:\n`;
-  //           resultText += `  状态: ${typedResult.status}\n`;
-  //           resultText += `  进度: ${typedResult.progress}%\n`;
-
-  //           if (typedResult.videoUrl) {
-  //             resultText += `  视频: ${typedResult.videoUrl}\n`;
-  //           } else if (typedResult.imageUrls && typedResult.imageUrls.length > 0) {
-  //             resultText += `  图片: ${typedResult.imageUrls.length}张\n`;
-  //           }
-
-  //           if (typedResult.error) {
-  //             resultText += `  错误: ${typedResult.error}\n`;
-  //           }
-  //           resultText += `\n`;
-  //         }
-  //       }
-
-  //       return {
-  //         content: [{ type: "text", text: resultText }]
-  //       };
-  //     } catch (error) {
-  //       const errorMessage = error instanceof Error ? error.message : String(error);
-  //       return {
-  //         content: [{ type: "text", text: `❌ 批量查询失败: ${errorMessage}` }],
-  //         isError: true
-  //       };
-  //     }
-  //   }
-  // );
-
-  // logger.debug('query_batch tool registered successfully');
-
-  // ============== 新的视频生成工具 ==============
+  // ============== 视频生成工具 ==============
 
   logger.debug('Registering video tool...');
 
   server.tool(
     "video",
-    "纯文字生成视频",
+    "纯文字生成视频 - 仅通过文字描述生成视频，无需提供任何图片。适合从零创建视频内容。默认异步模式，返回任务ID后用query查询结果。同步模式(async:false)会等待生成完成（最长10分钟）后直接返回视频URL。",
     {
-      prompt: z.string().min(1).describe("视频描述文本"),
-      async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
-      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+      prompt: z.string().min(1).describe("视频内容描述。建议包含：主体动作、场景环境、镜头运动、光照氛围。示例：\"一只小狗在草地上奔跑，阳光明媚，镜头跟随，浅景深\""),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待生成完成直接返回视频URL（最长10分钟）"),
+      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("视频分辨率: 720p(默认,更快) 或 1080p(更清晰)"),
+      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比: 16:9(默认横屏)/9:16(竖屏手机)/1:1(方形)/4:3/3:4/21:9(超宽)"),
+      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)，默认24fps。30fps更流畅但文件更大"),
+      duration: z.number().min(3000).max(15000).optional().default(5000).describe("视频时长（毫秒）。3000=3秒, 5000=5秒(默认), 15000=15秒(最长)"),
+      model: z.string().optional().default("jimeng-video-3.0").describe("视频模型。可选: jimeng-video-3.0(默认), jimeng-video-3.0-pro(高质量), jimeng-video-2.0-pro, jimeng-video-2.0")
     },
     async (params: any) => {
       try {
@@ -414,17 +318,17 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "video_frame",
-    "首尾帧控制视频",
+    "首尾帧控制视频 - 通过指定视频的起始画面和/或结束画面来精确控制视频内容。支持三种模式：仅首帧（图片动起来）、仅尾帧（生成过渡到目标画面）、首尾帧（精确控制起止画面之间的过渡动画）。适合图生视频、延时摄影效果等场景。",
     {
-      prompt: z.string().min(1).describe("视频描述文本"),
-      firstFrameImage: z.string().optional().describe("首帧图片路径"),
-      lastFrameImage: z.string().optional().describe("尾帧图片路径"),
-      async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
-      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+      prompt: z.string().min(1).describe("视频过渡描述。描述从首帧到尾帧之间发生什么变化。示例：\"从白天到夜晚的城市延时摄影，灯光逐渐亮起\""),
+      firstFrameImage: z.string().optional().describe("首帧图片绝对路径。视频的第一帧画面，视频将从此画面开始。如\"图生视频\"场景只需提供此参数"),
+      lastFrameImage: z.string().optional().describe("尾帧图片绝对路径。视频的最后一帧画面，视频将过渡到此画面结束"),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待完成后返回视频URL"),
+      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("视频分辨率: 720p(默认) 或 1080p"),
+      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比: 16:9(默认)/9:16(竖屏)/1:1(方形)/4:3/3:4/21:9"),
+      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)，默认24fps"),
+      duration: z.number().min(3000).max(15000).optional().default(5000).describe("视频时长（毫秒），3000-15000，默认5000(5秒)"),
+      model: z.string().optional().default("jimeng-video-3.0").describe("视频模型: jimeng-video-3.0(默认), jimeng-video-3.0-pro(高质量)")
     },
     async (params: any) => {
       try {
@@ -460,19 +364,19 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "video_multi",
-    "关键帧动画视频 - 提供2-10个关键帧图片，系统在帧间生成平滑过渡动画",
+    "关键帧动画视频 - 提供2-10个关键帧图片，系统在帧间生成平滑过渡动画。每帧的prompt描述\"从当前帧到下一帧\"的过渡过程（镜头运动、主体动作、转场效果）。最后一帧的prompt不生效。总时长不超过15秒。适合制作精确控制画面的动画视频。",
     {
       frames: z.array(z.object({
-        idx: z.number().int().min(0).describe("帧序号（0-based，从0开始连续递增）"),
-        imagePath: z.string().min(1).describe("关键帧图片绝对路径（必填，必须是本地绝对路径）"),
-        duration_ms: z.number().min(1000).max(6000).describe("从当前帧过渡到下一帧的动画时长（毫秒，1000-6000），总时长≤15000"),
-        prompt: z.string().min(1).describe("⚠️关键：描述从此帧到下一帧的过渡过程，包括：1)镜头移动（推拉摇移）2)画面变化（主体动作、光影变化）3)转场效果。示例：'镜头从正面缓慢推进，猫从坐姿站起，光线从左侧照入'。最后一帧的prompt会被忽略")
-      })).min(2).max(10).describe("关键帧数组（2-10个）。每帧必须包含图片、过渡时长、动画描述。⚠️注意：最后一帧的prompt不生效。示例：[{idx:0,imagePath:\"/path/1.jpg\",duration_ms:2000,prompt:\"镜头从正面推进，猫站起\"},{idx:1,imagePath:\"/path/2.jpg\",duration_ms:1000,prompt:\"忽略\"}]"),
-      async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
-      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+        idx: z.number().int().min(0).describe("帧序号，从0开始连续递增（0, 1, 2, ...）"),
+        imagePath: z.string().min(1).describe("关键帧图片的本地绝对路径"),
+        duration_ms: z.number().min(1000).max(6000).describe("从当前帧到下一帧的过渡动画时长（毫秒，1000-6000）。所有帧的duration_ms总和不超过15000"),
+        prompt: z.string().min(1).describe("描述从当前帧到下一帧的过渡过程。应包含：镜头运动（推进/拉远/摇移）、主体动作变化、光影变化。示例：\"镜头从正面缓慢推进，猫从坐姿站起，光线从左侧照入\"。最后一帧的prompt会被忽略（因为没有下一帧），可填\"结束\"")
+      })).min(2).max(10).describe("关键帧数组（2-10个）"),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待完成后返回视频URL"),
+      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("视频分辨率: 720p(默认) 或 1080p"),
+      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比: 16:9(默认)/9:16/1:1/4:3/3:4/21:9"),
+      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)，默认24fps"),
+      model: z.string().optional().default("jimeng-video-3.0").describe("视频模型: jimeng-video-3.0(默认), jimeng-video-3.0-pro(高质量)")
     },
     async (params: any) => {
       try {
@@ -508,16 +412,16 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "video_mix",
-    "融合多张图片主体到一个场景",
+    "多图主体融合视频 - 将2-4张参考图片中的不同主体组合到同一场景中生成视频。使用[图0]、[图1]等语法在prompt中引用具体图片的主体。适合：角色换场景（[图0]的猫在[图1]的草地上跑）、多元素组合（[图0]的人驾驶[图1]的车）、物体替换（[图0]的房间放着[图1]的家具）。",
     {
-      referenceImages: z.array(z.string()).min(2).max(4).describe("参考图片路径数组（2-4张）"),
-      prompt: z.string().min(1).describe("提示词，使用[图N]语法引用图片，例如：[图0]的猫在[图1]的地板上跑"),
-      async: z.boolean().optional().default(true).describe("是否异步模式，默认true（异步）"),
-      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("分辨率"),
-      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比"),
-      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)"),
-      duration: z.number().min(3000).max(15000).optional().default(5000).describe("时长(毫秒，3-15秒)"),
-      model: z.string().optional().default("jimeng-video-3.0").describe("模型名称")
+      referenceImages: z.array(z.string()).min(2).max(4).describe("参考图片的本地绝对路径数组（2-4张）。索引从0开始，在prompt中用[图0]、[图1]等引用"),
+      prompt: z.string().min(1).describe("视频描述，必须包含至少一个[图N]引用。示例：\"[图0]中的猫在[图1]的地板上奔跑，镜头跟随\" 或 \"[图0]的人坐在[图1]的车里，背景是[图2]的海滩\""),
+      async: z.boolean().optional().default(true).describe("是否异步模式。true(默认)=立即返回任务ID; false=等待完成后返回视频URL"),
+      resolution: z.enum(["720p", "1080p"]).optional().default("720p").describe("视频分辨率: 720p(默认) 或 1080p"),
+      videoAspectRatio: z.enum(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().default("16:9").describe("视频宽高比: 16:9(默认)/9:16/1:1/4:3/3:4/21:9"),
+      fps: z.number().min(12).max(30).optional().default(24).describe("帧率(12-30)，默认24fps"),
+      duration: z.number().min(3000).max(15000).optional().default(5000).describe("视频时长（毫秒），3000-15000，默认5000(5秒)"),
+      model: z.string().optional().default("jimeng-video-3.0").describe("视频模型: jimeng-video-3.0(默认), jimeng-video-3.0-pro(高质量)")
     },
     async (params: any) => {
       try {
@@ -557,7 +461,7 @@ export const createServer = (): McpServer => {
 
   server.tool(
     "credit",
-    "查询当前积分余额并领取每日免费积分",
+    "查询当前积分余额并自动领取每日免费积分。返回总积分、赠送积分、购买积分、VIP积分的详细分类，以及每日积分领取状态。即梦每天提供60-80免费积分，调用此工具会自动领取（每天首次调用生效）。",
     {},
     async () => {
       try {

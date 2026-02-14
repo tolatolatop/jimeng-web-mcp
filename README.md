@@ -110,19 +110,18 @@
 | `video_multi` | 异步 | 多帧动画 | 2-10个关键帧，系统补间 |
 | `video_mix` | 异步 | 主体融合 | 用`[图0]`语法引用多张图 |
 
-### 查询与工具 (3个工具)
+### 积分管理 (1个工具)
+
+| 工具 | 说明 |
+|------|------|
+| `credit` | 查询当前积分余额并领取每日免费积分 |
+
+### 查询与工具 (2个工具)
 
 | 工具 | 说明 |
 |------|------|
 | `query` | 查询单个任务状态和结果 |
-| `query_batch` | 批量查询最多10个任务 |
 | `ping` | 测试服务器连接 |
-
-### 后处理 (1个工具)
-
-| 工具 | 说明 |
-|------|------|
-| `video_post_process` | 帧插值、超分辨率、音效生成（开发中） |
 
 ---
 
@@ -434,6 +433,62 @@
 
 ---
 
+## 💰 积分管理
+
+### `credit` - 查询积分余额并领取每日免费积分
+
+调用后自动领取每日免费积分，并返回当前积分余额的详细分类。
+
+#### 使用示例
+
+```typescript
+// 无需参数，直接调用
+{}
+
+// 返回示例：
+// 💰 积分信息
+//
+// 📊 当前总积分: 180
+//   🎁 赠送积分: 120
+//   💳 购买积分: 0
+//   👑 VIP积分: 60
+//
+// 🎉 每日积分: 首次领取 60 积分
+```
+
+#### 编程接口（API）
+
+除了 MCP 工具外，`NewJimengClient` 还暴露以下积分相关 API，可在代码中直接调用：
+
+```typescript
+const client = getApiClient();
+
+// 1. 领取每日积分并获取总积分
+const receiveResult = await client.receiveCredit();
+// → { curTotalCredits: 180, receiveQuota: 60, isFirstReceive: true }
+
+// 2. 查询积分余额详情（不领取）
+const credit = await client.getCredit();
+// → { giftCredit: 120, purchaseCredit: 0, vipCredit: 60, totalCredit: 180 }
+
+// 3. 查询积分消费历史（分页）
+const history = await client.getCreditHistory('0', 20);
+// → { records: [{ amount: 90, title: '视频生成', historyType: 2, ... }], hasMore: true, nextCursor: '...' }
+
+// 4. 查询VIP订阅信息
+const vipInfo = await client.getSubscriptionInfo();
+// → { isVip: true, vipLevel: 'standard', endTime: 1773000000, isAutoRenew: true, ... }
+```
+
+| API 方法 | 端点 | 说明 |
+|---------|------|------|
+| `receiveCredit()` | `/commerce/v1/benefits/credit_receive` | 领取每日积分 + 查询总积分 |
+| `getCredit()` | `/commerce/v1/benefits/user_credit` | 查询积分余额详细分类 |
+| `getCreditHistory()` | `/commerce/v1/benefits/user_credit_history` | 积分消费/领取记录（分页） |
+| `getSubscriptionInfo()` | `/commerce/v1/subscription/user_info` | VIP订阅状态 |
+
+---
+
 ## 🔍 查询工具
 
 ### `query` - 查询单个任务
@@ -448,25 +503,6 @@
   "status": "completed",
   "progress": 100,
   "imageUrls": ["https://...", "https://...", ...]
-}
-```
-
-### `query_batch` - 批量查询
-
-```typescript
-{
-  "historyIds": [
-    "4761818115596",
-    "4761818115597",
-    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"  // 视频ID
-  ]
-}
-
-// 返回：
-{
-  "4761818115596": { "status": "completed", "imageUrls": [...] },
-  "4761818115597": { "status": "processing", "progress": 45 },
-  "aaaaaaaa-...": { "status": "completed", "videoUrl": "https://..." }
 }
 ```
 
@@ -518,6 +554,142 @@ npm run start:api
 
 ---
 
+## 🚀 Seedance 2.0 接口说明
+
+即梦 Web 端已上线 Seedance 2.0 视频生成模型，相比之前的视频模型有显著改进。以下记录已确认的接口差异和调用方式。
+
+### 当前已适配
+
+本项目已根据 Web 端实际请求格式进行了以下适配：
+
+#### 1. 请求参数对齐
+
+`HttpClient.generateRequestParams()` 已对齐 Web 端实际参数：
+
+```typescript
+{
+  "aid": 513695,              // 应用ID（数字类型）
+  "device_platform": "web",
+  "region": "cn",             // 小写
+  "webId": "...",             // camelCase
+  "web_version": "7.5.0",    // Web客户端版本
+  "da_version": "3.3.9",     // 数据分析版本
+  "aigc_features": "app_lip_sync"  // 功能特性标记
+}
+```
+
+#### 2. 图片上传审核
+
+上传图片后自动调用审核接口，确保内容合规：
+
+```typescript
+// ImageUploader.upload() 流程：
+// 1. ApplyImageUpload     — 申请上传凭证
+// 2. UploadFile           — 上传文件数据
+// 3. CommitImageUpload    — 确认上传
+// 4. submitAuditJob       — 提交内容审核（新增）
+//    POST /mweb/v1/imagex/submit_audit_job
+//    Body: { image_uri: "tos-cn-i-xxx/..." }
+```
+
+#### 3. 任务队列查询
+
+新增 `getQueueInfo()` 方法，用于获取任务的详细队列信息：
+
+```typescript
+const client = getApiClient();
+const queueInfo = await client.getQueueInfo(["task-id-1", "task-id-2"]);
+// POST /mweb/v1/get_history_queue_info
+// Body: { submit_ids: [...], history_ids: [...] }
+```
+
+### Seedance 2.0 未适配功能
+
+以下是 Web 端已使用但本项目尚未实现的 Seedance 2.0 特性：
+
+#### 1. unified_edit_input 请求格式
+
+Seedance 2.0 使用全新的生成请求结构：
+
+```json
+{
+  "submit_id": "uuid",
+  "task_extra": { "...": "..." },
+  "http_common_info": { "aid": 513695 },
+  "input": {
+    "seed": -1,
+    "video_mode": "general_model",
+    "unified_edit_input": {
+      "common_input": {
+        "model_name": "seedance-2-0",
+        "generate_type": "generate"
+      },
+      "text_prompt": {
+        "text_prompt": "视频描述文字"
+      },
+      "output_params": {
+        "video_length_frames": 153,
+        "fps": 24,
+        "resolution": { "width": 1280, "height": 720 }
+      }
+    }
+  }
+}
+```
+
+#### 2. 混合图片/视频引用
+
+Seedance 2.0 支持在同一生成请求中混合引用图片和视频：
+
+```json
+{
+  "unified_edit_input": {
+    "visual_prompt": {
+      "visual_list": [
+        {
+          "media_type": "image",
+          "url": "tos-cn-i-xxx/...",
+          "sub_type": "first_frame"
+        },
+        {
+          "media_type": "video",
+          "url": "tos-cn-v-xxx/...",
+          "sub_type": "reference"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 3. 视频文件上传
+
+视频上传流程与图片不同，使用独立的凭证和存储桶：
+
+```
+POST /mweb/v1/video/get_upload_token  — 获取视频上传凭证
+PUT  https://tos-d-x-lf.snssdk.com/upload/v1/tos-cn-v-xxx/...  — 上传视频文件
+POST /mweb/v1/video/commit_upload  — 确认视频上传
+```
+
+#### 4. 改进的轮询状态
+
+Seedance 2.0 返回更丰富的队列信息：
+
+```json
+{
+  "queue_info": {
+    "queue_len": 5,
+    "queue_position": 2,
+    "estimated_wait_seconds": 120
+  }
+}
+```
+
+> 以上未适配功能记录于此作为后续开发参考。欢迎社区贡献 PR 来完善 Seedance 2.0 支持。
+
+---
+
 ## 🤔 常见问题
 
 ### 1. 图像生成失败
@@ -559,8 +731,11 @@ npm run start:api
 
 | 模型名称 | 说明 | 推荐场景 |
 |---------|------|---------|
-| `jimeng-4.0` | 最新第四代模型（默认） | 全场景推荐 |
-| `jimeng-3.0` | 第三代模型，画面鲜明 | 风格化创作 |
+| `jimeng-4.5` | 最新 4.5 模型（默认） | 全场景推荐，画质最佳 |
+| `jimeng-4.1` | 4.1 版本 | 均衡画质与速度 |
+| `jimeng-4.0` | 第四代模型 | 全场景推荐 |
+| `jimeng-3.1` | 3.1 艺术版 | 艺术风格化 |
+| `jimeng-3.0` | 第三代模型 | 风格化创作，画面鲜明 |
 | `jimeng-2.1` | 稳定版本 | 常规生成 |
 | `jimeng-2.0-pro` | Pro版本 | 高质量需求 |
 
@@ -571,6 +746,9 @@ npm run start:api
 | `jimeng-video-3.0` | 主力模型（默认） | 全场景推荐 |
 | `jimeng-video-3.0-pro` | Pro高质量版本 | 专业级作品 |
 | `jimeng-video-2.0-pro` | 兼容性好 | 多场景适配 |
+| `jimeng-video-2.0` | 基础版本 | 快速生成 |
+
+> **Seedance 2.0 模型**：即梦 Web 端已上线 Seedance 2.0 视频模型，目前本项目视频工具使用 `jimeng-video-3.0` 系列调用。Seedance 2.0 采用了全新的 `unified_edit_input` 请求格式和混合图片/视频引用机制，相关接口适配正在规划中。
 
 ---
 
