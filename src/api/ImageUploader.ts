@@ -176,6 +176,11 @@ export class ImageUploader {
    */
   detectFormat(pathOrBuffer: string | Buffer): ImageMetadata {
     try {
+      // 过小的Buffer不可能是有效图片（最小的有效图片也需要数十字节）
+      if (Buffer.isBuffer(pathOrBuffer) && pathOrBuffer.length < 8) {
+        throw new Error('Buffer太小，不是有效的图片数据');
+      }
+
       const dimensions = (sizeOf as any)(pathOrBuffer);
 
       if (!dimensions.width || !dimensions.height || !dimensions.type) {
