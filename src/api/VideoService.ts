@@ -635,12 +635,22 @@ export class VideoService {
     }
 
     const actualModel = getModel(model);
+    logger.info(`[Seedance] ========== 开始 Seedance 2.0 视频生成 ==========`);
+    logger.info(`[Seedance] 模型: ${model} -> ${actualModel}, 素材数: ${materials.length}, 异步: ${asyncMode}`);
+    logger.info(`[Seedance] 素材列表: ${materials.map((m, i) => `[${i}] ${m.type}: ${m.filePath}`).join(', ')}`);
 
     // 上传所有素材（图片和视频分别处理）
     const materialList: any[] = [];
+    for (let matIdx = 0; matIdx < materials.length; matIdx++) {
+      const mat = materials[matIdx];
+      logger.info(`[Seedance] 上传素材 [${matIdx + 1}/${materials.length}] type=${mat.type}: ${mat.filePath}`);
+    }
+
     for (const mat of materials) {
       if (mat.type === 'image') {
+        logger.info(`[Seedance] 开始上传图片: ${mat.filePath}`);
         const uploadResult = await this.imageUploader.upload(mat.filePath);
+        logger.info(`[Seedance] 图片上传成功: uri=${uploadResult.uri?.substring(0, 60)}..., ${uploadResult.width}x${uploadResult.height}`);
         materialList.push({
           type: "",
           id: this.generateUuid(),
@@ -663,7 +673,9 @@ export class VideoService {
           }
         });
       } else if (mat.type === 'video') {
+        logger.info(`[Seedance] 开始上传视频: ${mat.filePath}`);
         const uploadResult = await this.videoUploader.upload(mat.filePath);
+        logger.info(`[Seedance] 视频上传成功: vid=${uploadResult.vid}, ${uploadResult.width}x${uploadResult.height}, ${uploadResult.duration}ms`);
         materialList.push({
           type: "",
           id: this.generateUuid(),
@@ -785,6 +797,9 @@ export class VideoService {
       }]
     };
 
+    logger.info(`[Seedance] 所有素材上传完成 (${materialList.length} 个)，构建请求体...`);
+    logger.info(`[Seedance] benefit_type=${benefitType}, model=${actualModel}`);
+
     const requestBody = {
       extend: {
         root_model: actualModel,
@@ -808,7 +823,9 @@ export class VideoService {
     };
 
     // 提交任务
+    logger.info(`[Seedance] 提交视频生成任务...`);
     const taskId = await this.submitTaskWithDraft(requestBody);
+    logger.info(`[Seedance] 任务提交成功: taskId=${taskId}`);
 
     if (asyncMode) {
       return {

@@ -67,6 +67,13 @@ export class HttpClient {
   }
 
   /**
+   * 判断是否为即梦内部 API（相对路径或 jimeng 域名）
+   */
+  private isInternalApi(url: string): boolean {
+    return url.startsWith('/') || url.includes('jimeng.jianying.com');
+  }
+
+  /**
    * 执行HTTP请求
    */
   async request<T = any>(options: RequestOptions): Promise<T> {
@@ -81,50 +88,60 @@ export class HttpClient {
 
     const baseUrl = 'https://jimeng.jianying.com';
     const fullUrl = url.includes('https://') ? url : `${baseUrl}${url}`;
+    const isInternal = this.isInternalApi(url);
 
-    // 提取URI路径用于签名计算
-    const uri = url.startsWith('/') ? url : new URL(fullUrl).pathname;
+    let requestHeaders: Record<string, string>;
 
-    // 生成设备时间戳和签名
-    const deviceTime = Math.floor(Date.now() / 1000);
-    const sign = this.generateSign(uri, deviceTime);
+    if (isInternal) {
+      // 内部 API：添加完整的即梦认证头
+      const uri = url.startsWith('/') ? url : new URL(fullUrl).pathname;
+      const deviceTime = Math.floor(Date.now() / 1000);
+      const sign = this.generateSign(uri, deviceTime);
 
-    const FAKE_HEADERS = {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Encoding": "gzip, deflate, br, zstd",
-      "Accept-language": "zh-CN,zh;q=0.9",
-      "Cache-control": "no-cache",
-      "Content-Type": "application/json",
-      Appid: DEFAULT_ASSISTANT_ID,
-      Appvr: "8.4.0",  // DevTools抓取的版本，sign仍使用5.8.0
-      "device-time": deviceTime.toString(),
-      "sign-ver": "1",
-      sign: sign,  // 添加sign签名头
-      loc: "cn",
-      "app-sdk-version": "48.0.0",
-      tdid: "",
-      lan: "zh-Hans",
-      Origin: "https://jimeng.jianying.com",
-      Pragma: "no-cache",
-      Priority: "u=1, i",
-      Referer: "https://jimeng.jianying.com",
-      Pf: "7",
-      "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      "Sec-Ch-Ua-Mobile": "?0",
-      "Sec-Ch-Ua-Platform": '"Windows"',
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-origin",
-      "User-Agent": UA
-    };
+      const FAKE_HEADERS: Record<string, string> = {
+        Accept: "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-language": "zh-CN,zh;q=0.9",
+        "Cache-control": "no-cache",
+        "Content-Type": "application/json",
+        Appid: DEFAULT_ASSISTANT_ID,
+        Appvr: "8.4.0",
+        "device-time": deviceTime.toString(),
+        "sign-ver": "1",
+        sign: sign,
+        loc: "cn",
+        "app-sdk-version": "48.0.0",
+        tdid: "",
+        lan: "zh-Hans",
+        Origin: "https://jimeng.jianying.com",
+        Pragma: "no-cache",
+        Priority: "u=1, i",
+        Referer: "https://jimeng.jianying.com",
+        Pf: "7",
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": UA
+      };
 
-    const requestHeaders = {
-      ...FAKE_HEADERS,
-      'Cookie': generateCookie(this.refreshToken),
-      ...headers
-    };
+      requestHeaders = {
+        ...FAKE_HEADERS,
+        'Cookie': generateCookie(this.refreshToken),
+        ...headers
+      };
+    } else {
+      // 外部 API（imagex/vod 等）：仅使用调用者传入的头部 + 基本头
+      requestHeaders = {
+        Accept: "application/json, text/plain, */*",
+        "User-Agent": UA,
+        ...headers
+      };
+    }
 
-    logger.debug(`[HttpClient] Request: ${method} ${fullUrl}`);
+    logger.info(`[HttpClient] ${method} ${fullUrl.substring(0, 120)}${fullUrl.length > 120 ? '...' : ''} [${isInternal ? 'internal' : 'external'}]`);
 
     try {
       const response: AxiosResponse<T> = await axios({
@@ -138,7 +155,7 @@ export class HttpClient {
 
       return response.data;
     } catch (error) {
-      return this.handleError(error as AxiosError);
+      return this.handleError(error as AxiosError, method, fullUrl);
     }
   }
 
@@ -348,13 +365,23 @@ export class HttpClient {
   /**
    * 统一错误处理
    */
-  private handleError(error: AxiosError): never {
+  private handleError(error: AxiosError, method?: string, url?: string): never {
+    const urlInfo = url ? ` [${method || '?'} ${url.substring(0, 150)}]` : '';
+    const statusCode = error.response?.status;
+
     if (error.response) {
-      throw new Error(`即梦API请求错误: ${JSON.stringify(error.response.data)}`);
+      const responseData = typeof error.response.data === 'string'
+        ? error.response.data.substring(0, 500)
+        : JSON.stringify(error.response.data).substring(0, 500);
+      logger.error(`[HttpClient] API请求失败${urlInfo} status=${statusCode}: ${responseData}`);
+      throw new Error(`API请求错误${urlInfo} status=${statusCode}: ${responseData}`);
     } else if (error.request) {
-      throw new Error(`[FINAL-DEBUG] HttpClient.handleError: Caught error with no response.`);
+      const errCode = error.code || 'UNKNOWN';
+      logger.error(`[HttpClient] 请求无响应${urlInfo} code=${errCode}: ${error.message}`);
+      throw new Error(`请求无响应${urlInfo} code=${errCode}: ${error.message}`);
     } else {
-      throw new Error(`即梦API请求失败: ${error.message}`);
+      logger.error(`[HttpClient] 请求构建失败${urlInfo}: ${error.message}`);
+      throw new Error(`请求失败${urlInfo}: ${error.message}`);
     }
   }
 }

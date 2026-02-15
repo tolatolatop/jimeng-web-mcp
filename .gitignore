@@ -94,3 +94,4 @@ node_modules/
 20250105-api-endpoint-analysis/
 digital-human-api-docs/
 video_generate_pre_process.json
+.env

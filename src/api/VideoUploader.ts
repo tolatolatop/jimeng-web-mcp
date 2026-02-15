@@ -1,10 +1,27 @@
 /**
  * VideoUploader - 视频文件上传服务
  * 实现视频上传到 VOD（ByteDance 视频对象存储）
- * 流程：get_upload_token(scene=1) → ApplyUploadInner → 分片上传 → CommitUploadInner
+ *
+ * 完整流程（基于 HAR 分析 + 实际调试验证）：
+ *   1. get_upload_token(scene=1) -> 获取 VOD STS 凭证
+ *   2. ApplyUploadInner(GET, AWS Sig V4) -> 获取 StoreUri, Auth, UploadHost, Vid, SessionKey
+ *   3. 上传视频数据到 CDN（两种模式自动切换）：
+ *      - 优先：分片上传（init → transfer × N → finish，无 Authorization 头）
+ *      - 降级：直接上传（单次 POST，带 Authorization: Auth 头）
+ *        注：部分服务器环境下 CDN 分片 init 返回 204，需降级为直接上传
+ *   4. CommitUploadInner(POST, AWS Sig V4)
+ *      - 使用 ApplyUploadInner 返回的**服务端 SessionKey**（非客户端构建）
+ *
+ * 关键发现（HAR 对比 + 调试）：
+ *   - ApplyUploadInner 返回的 SessionKey 必须直接使用，客户端构建会导致 "invalid token"
+ *   - CDN 分片上传不发送 Authorization 头（CDN 靠 StoreUri 路径鉴权）
+ *   - 直接上传使用 ApplyUploadInner 返回的 Auth 作为 Authorization
+ *   - CommitUploadInner 需要 AWS SigV4 Authorization 头
  */
 
 import axios from 'axios';
+// @ts-ignore
+import crc32 from 'crc32';
 import fs from 'fs';
 import path from 'path';
 import { HttpClient } from './HttpClient.js';
@@ -20,37 +37,124 @@ export interface VideoUploadResult {
   size: number;
 }
 
-// 分片大小: 2MB
-const CHUNK_SIZE = 2 * 1024 * 1024;
+// ApplyUploadInner 返回的完整结果
+interface ApplyUploadResult {
+  storeUri: string;
+  auth: string;
+  uploadHost: string;
+  vid: string;
+  sessionKey: string;     // 服务端生成的 SessionKey（关键！）
+  uploadId?: string;      // 服务端分配的 UploadID
+}
+
+// 分片大小: 5MB（与浏览器 SDK 一致）
+const CHUNK_SIZE = 5 * 1024 * 1024;
+
+// CDN 上传时必须携带的基础头
+const CDN_BASE_HEADERS: Record<string, string> = {
+  'Accept': '*/*',
+  'Origin': 'https://jimeng.jianying.com',
+  'Referer': 'https://jimeng.jianying.com/',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+};
 
 /**
  * VideoUploader类
  * 使用组合模式，依赖HttpClient
  */
 export class VideoUploader {
+  private cachedUserId: string | null = null;
+
   constructor(private httpClient: HttpClient) {}
+
+  /**
+   * 获取用户 UID（用于 CDN 上传的 X-Storage-U 头部）
+   * 缓存结果避免重复请求
+   */
+  private async getUserId(): Promise<string> {
+    if (this.cachedUserId) {
+      return this.cachedUserId;
+    }
+
+    try {
+      const res = await this.httpClient.request({
+        method: 'POST',
+        url: '/mweb/v1/get_user_info',
+        params: { aid: "513695", device_platform: "web", region: "CN" },
+        data: {},
+        timeout: 10000,
+      });
+      const uid = res?.data?.uid;
+      if (uid) {
+        this.cachedUserId = uid;
+        logger.info(`[VideoUploader] 获取用户ID: ${uid}`);
+        return uid;
+      }
+    } catch (error) {
+      logger.warn(`[VideoUploader] 获取用户ID失败: ${error}`);
+    }
+
+    // fallback: 使用随机数字ID
+    this.cachedUserId = String(Math.floor(Math.random() * 9000000000000000) + 1000000000000000);
+    logger.info(`[VideoUploader] 使用随机用户ID: ${this.cachedUserId}`);
+    return this.cachedUserId;
+  }
 
   /**
    * 上传视频文件
    */
   async upload(videoPath: string): Promise<VideoUploadResult> {
+    const startTime = Date.now();
+    logger.info(`[VideoUploader] ========== 开始上传视频: ${videoPath} ==========`);
+
     // 1. 读取视频文件
     const videoBuffer = await this.getFileContent(videoPath);
     const fileSize = videoBuffer.length;
-    logger.debug(`[VideoUploader] 视频文件大小: ${fileSize} bytes`);
+    logger.info(`[VideoUploader] [步骤1/4] 读取视频文件完成: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(1)}MB)`);
 
-    // 2. 获取上传凭证 (scene=1 → VOD)
-    const uploadAuth = await this.getUploadToken();
+    // 2. 获取上传凭证 (scene=1 -> VOD)
+    let uploadAuth;
+    try {
+      uploadAuth = await this.getUploadToken();
+      logger.info(`[VideoUploader] [步骤2/4] 获取上传凭证成功: space=${uploadAuth.space_name}, domain=${uploadAuth.upload_domain}`);
+    } catch (error) {
+      logger.error(`[VideoUploader] [步骤2/4] 获取上传凭证失败: ${error}`);
+      throw error;
+    }
 
-    // 3. ApplyUploadInner → 获取上传地址和 Vid
-    const applyResult = await this.applyUpload(uploadAuth, fileSize);
-    const { storeUri, auth, uploadHost, vid, sessionKey } = applyResult;
+    // 3. ApplyUploadInner -> 获取上传地址、Vid 和服务端 SessionKey
+    let applyResult: ApplyUploadResult;
+    try {
+      applyResult = await this.applyUpload(uploadAuth, fileSize);
+      logger.info(`[VideoUploader] [步骤3/4] ApplyUploadInner 成功: host=${applyResult.uploadHost}, vid=${applyResult.vid}`);
+    } catch (error) {
+      logger.error(`[VideoUploader] [步骤3/4] ApplyUploadInner 失败: ${error}`);
+      throw error;
+    }
 
-    // 4. 分片上传视频数据
-    await this.uploadChunks(videoBuffer, storeUri, auth, uploadHost);
+    // 4. 上传视频数据到 CDN
+    //    优先尝试分片上传，失败时降级为直接上传（带 Auth）
+    try {
+      await this.uploadVideoData(videoBuffer, applyResult);
+      logger.info(`[VideoUploader] [步骤4/5] 视频数据上传完成`);
+    } catch (error) {
+      logger.error(`[VideoUploader] [步骤4/5] 视频数据上传失败: ${error}`);
+      throw error;
+    }
 
-    // 5. CommitUploadInner → 确认上传，获取 VideoMeta
-    const commitResult = await this.commitUpload(uploadAuth, sessionKey);
+    // 5. CommitUploadInner -> 确认上传，获取 VideoMeta
+    //    使用 ApplyUploadInner 返回的服务端 SessionKey
+    let commitResult;
+    try {
+      commitResult = await this.commitUpload(uploadAuth, applyResult.sessionKey);
+      logger.info(`[VideoUploader] [步骤5/5] CommitUploadInner 成功: vid=${commitResult.vid}, ${commitResult.width}x${commitResult.height}, ${commitResult.duration}s`);
+    } catch (error) {
+      logger.error(`[VideoUploader] [步骤5/5] CommitUploadInner 失败: ${error}`);
+      throw error;
+    }
+
+    const elapsed = Date.now() - startTime;
+    logger.info(`[VideoUploader] ========== 视频上传完成，耗时 ${(elapsed / 1000).toFixed(1)}s ==========`);
 
     return {
       vid: commitResult.vid,
@@ -78,7 +182,7 @@ export class VideoUploader {
       method: 'POST',
       url: '/mweb/v1/get_upload_token',
       params: uploadParams,
-      data: { scene: 1 },  // scene=1 → VOD (视频)
+      data: { scene: 1 },
       timeout: 30000
     });
 
@@ -92,18 +196,14 @@ export class VideoUploader {
 
   /**
    * ApplyUploadInner - 申请上传地址
+   * 使用 AWS SigV4 Authorization + x-amz-* 头
+   * 返回包含服务端生成 SessionKey 的完整结果
    */
-  private async applyUpload(uploadAuth: any, fileSize: number): Promise<{
-    storeUri: string;
-    auth: string;
-    uploadHost: string;
-    vid: string;
-    sessionKey: string;
-  }> {
+  private async applyUpload(uploadAuth: any, fileSize: number): Promise<ApplyUploadResult> {
     const params: Record<string, any> = {
       Action: 'ApplyUploadInner',
       Version: '2020-11-19',
-      SpaceName: uploadAuth.space_name,  // "dreamina"
+      SpaceName: uploadAuth.space_name,
       FileType: 'video',
       IsInner: 1,
       FileSize: fileSize,
@@ -140,90 +240,163 @@ export class VideoUploader {
       throw new Error('ApplyUploadInner 未返回存储信息');
     }
 
+    if (!uploadNode.SessionKey) {
+      throw new Error('ApplyUploadInner 未返回 SessionKey');
+    }
+
+    logger.debug(`[VideoUploader] ApplyUpload: host=${uploadNode.UploadHost}, vid=${uploadNode.Vid}, sessionKey长度=${uploadNode.SessionKey.length}`);
+
     return {
       storeUri: storeInfo.StoreUri,
       auth: storeInfo.Auth,
       uploadHost: uploadNode.UploadHost,
       vid: uploadNode.Vid,
-      sessionKey: storeInfo.UploadID || response?.Result?.InnerUploadAddress?.SessionKey || '',
+      sessionKey: uploadNode.SessionKey,
+      uploadId: storeInfo.UploadID,
     };
   }
 
   /**
-   * 分片上传视频数据
+   * 上传视频数据到 CDN
+   * 优先分片上传，失败时降级为直接上传
    */
-  private async uploadChunks(
+  private async uploadVideoData(
     videoBuffer: Buffer,
-    storeUri: string,
-    auth: string,
-    uploadHost: string
+    applyResult: ApplyUploadResult
+  ): Promise<void> {
+    // 优先尝试分片上传（浏览器标准模式）
+    try {
+      await this.uploadChunked(videoBuffer, applyResult);
+      return; // 分片上传成功
+    } catch (chunkedError) {
+      logger.warn(`[VideoUploader] 分片上传失败，降级为直接上传: ${chunkedError}`);
+    }
+
+    // 降级：直接上传（带 Auth，适用于 CDN 边缘层限制的环境）
+    await this.uploadDirect(videoBuffer, applyResult);
+  }
+
+  /**
+   * 分片上传视频数据到 CDN（浏览器标准模式）
+   * CDN 上传阶段不发送 Authorization 头，靠 StoreUri 路径鉴权
+   */
+  private async uploadChunked(
+    videoBuffer: Buffer,
+    applyResult: ApplyUploadResult
   ): Promise<void> {
     const totalChunks = Math.ceil(videoBuffer.length / CHUNK_SIZE);
-    const baseUrl = `https://${uploadHost}/upload/v1/${storeUri}`;
+    const baseUrl = `https://${applyResult.uploadHost}/upload/v1/${applyResult.storeUri}`;
 
-    if (totalChunks === 1) {
-      // 小文件直接上传
-      await this.uploadSingleFile(baseUrl, videoBuffer, auth);
-      return;
-    }
+    const userId = await this.getUserId();
+    const cdnHeaders = {
+      ...CDN_BASE_HEADERS,
+      'X-Storage-U': userId,
+    };
 
-    // 分片上传：init → upload parts → finish
     // Step 1: Init
+    const boundary = `WebKitFormBoundary${this.generateRandomString(16)}`;
     const initUrl = `${baseUrl}?uploadmode=part&phase=init`;
-    const initResp = await axios.post(initUrl, null, {
-      headers: { Authorization: auth, 'Content-Type': 'application/octet-stream' }
-    });
+
+    logger.info(`[VideoUploader] [分片] 初始化: ${totalChunks} 片, X-Storage-U=${userId}`);
+
+    const initResp = await axios.post(
+      initUrl,
+      `------${boundary}--\r\n`,
+      {
+        headers: {
+          ...cdnHeaders,
+          'Content-Type': `multipart/form-data; boundary=----${boundary}`,
+        },
+        validateStatus: () => true,
+      }
+    );
+
     const uploadId = initResp.data?.data?.uploadid;
     if (!uploadId) {
-      throw new Error('分片上传初始化失败：未返回uploadid');
+      throw new Error(`分片初始化失败: status=${initResp.status}`);
     }
 
-    // Step 2: Upload parts
+    logger.info(`[VideoUploader] [分片] uploadid=${uploadId}`);
+
+    // Step 2: Transfer
     const partHashes: string[] = [];
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, videoBuffer.length);
       const chunk = videoBuffer.subarray(start, end);
       const partNumber = i + 1;
+      const partUrl = `${baseUrl}?uploadid=${uploadId}&part_number=${partNumber}&phase=transfer`;
 
-      const partUrl = `${baseUrl}?uploadmode=part&phase=transfer&uploadid=${uploadId}&part_number=${partNumber}`;
       const partResp = await axios.post(partUrl, chunk, {
-        headers: { Authorization: auth, 'Content-Type': 'application/octet-stream' },
+        headers: {
+          ...cdnHeaders,
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': 'attachment; filename="undefined"',
+        },
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
 
-      const partHash = partResp.data?.data?.hash || partResp.data?.data?.crc32 || '';
-      partHashes.push(`${partNumber}:${partHash}`);
-      logger.debug(`[VideoUploader] 上传分片 ${partNumber}/${totalChunks}`);
+      if (partResp.data?.code !== 2000) {
+        throw new Error(`分片 ${partNumber} 失败: ${JSON.stringify(partResp.data).substring(0, 200)}`);
+      }
+
+      const crc32Val = partResp.data?.data?.crc32 || '';
+      partHashes.push(`${partNumber}:${crc32Val}`);
+      logger.info(`[VideoUploader] [分片] ${partNumber}/${totalChunks} 成功`);
     }
 
     // Step 3: Finish
     const finishUrl = `${baseUrl}?uploadmode=part&phase=finish&uploadid=${uploadId}`;
-    await axios.post(finishUrl, partHashes.join(','), {
-      headers: { Authorization: auth, 'Content-Type': 'text/plain' }
+    const finishResp = await axios.post(finishUrl, partHashes.join(','), {
+      headers: { ...cdnHeaders, 'Content-Type': 'text/plain;charset=UTF-8' },
     });
 
-    logger.debug(`[VideoUploader] 分片上传完成: ${totalChunks} 片`);
+    if (finishResp.data?.code !== 2000) {
+      throw new Error(`分片完成确认失败: ${JSON.stringify(finishResp.data).substring(0, 200)}`);
+    }
+
+    logger.info(`[VideoUploader] [分片] 全部完成: ${totalChunks} 片`);
   }
 
   /**
-   * 单文件直接上传（小文件）
+   * 直接上传视频数据到 CDN（降级模式）
+   * 使用 ApplyUploadInner 返回的 Auth 作为 Authorization
+   * 适用于 CDN 边缘层对无 Authorization 请求返回 204 的环境
    */
-  private async uploadSingleFile(baseUrl: string, data: Buffer, auth: string): Promise<void> {
-    await axios.post(baseUrl, data, {
+  private async uploadDirect(
+    videoBuffer: Buffer,
+    applyResult: ApplyUploadResult
+  ): Promise<void> {
+    const uploadUrl = `https://${applyResult.uploadHost}/upload/v1/${applyResult.storeUri}`;
+    const videoCrc32 = crc32(videoBuffer).toString(16);
+
+    logger.info(`[VideoUploader] [直接上传] URL: ${uploadUrl}, size=${videoBuffer.length}, crc32=${videoCrc32}`);
+
+    const resp = await axios.post(uploadUrl, videoBuffer, {
       headers: {
-        Authorization: auth,
+        ...CDN_BASE_HEADERS,
+        'Authorization': applyResult.auth,
+        'Content-CRC32': videoCrc32,
+        'Content-Disposition': 'attachment; filename="undefined"',
         'Content-Type': 'application/octet-stream',
       },
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
+      validateStatus: () => true,
     });
-    logger.debug('[VideoUploader] 单文件上传完成');
+
+    if (resp.status !== 200 || resp.data?.code !== 2000) {
+      throw new Error(`直接上传失败: status=${resp.status}, body=${JSON.stringify(resp.data).substring(0, 300)}`);
+    }
+
+    logger.info(`[VideoUploader] [直接上传] 成功: crc32=${resp.data?.data?.crc32}`);
   }
 
   /**
    * CommitUploadInner - 确认上传
+   * 使用 AWS SigV4 Authorization + x-amz-* 头
+   * SessionKey 使用 ApplyUploadInner 返回的服务端生成版本
    */
   private async commitUpload(uploadAuth: any, sessionKey: string): Promise<{
     vid: string;
@@ -241,6 +414,7 @@ export class VideoUploader {
 
     const bodyData = {
       SessionKey: sessionKey,
+      Functions: [],
     };
 
     const headers = await this.httpClient.generateAuthorizationAndHeader(
@@ -253,21 +427,29 @@ export class VideoUploader {
       params,
       bodyData
     );
+    headers['Content-Type'] = 'text/plain;charset=UTF-8';
 
     const queryString = Object.entries(params)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
 
+    const commitUrl = `https://${uploadAuth.upload_domain}/?${queryString}`;
+    logger.debug(`[VideoUploader] CommitUploadInner: ${commitUrl}`);
+
     const response = await this.httpClient.request({
       method: 'POST',
-      url: `https://${uploadAuth.upload_domain}/?${queryString}`,
+      url: commitUrl,
       data: bodyData,
       headers
     });
 
     const result = response?.Result?.Results?.[0];
     if (!result) {
-      throw new Error('CommitUploadInner 未返回结果');
+      const errMsg = response?.ResponseMetadata?.Error?.Message
+        || response?.ResponseMetadata?.Error?.Code
+        || JSON.stringify(response).substring(0, 500);
+      logger.error(`[VideoUploader] CommitUploadInner 失败: ${JSON.stringify(response).substring(0, 1000)}`);
+      throw new Error(`CommitUploadInner 未返回结果: ${errMsg}`);
     }
 
     const meta = result.VideoMeta || {};
@@ -307,7 +489,7 @@ export class VideoUploader {
    * 生成随机字符串
    */
   private generateRandomString(length: number): string {
-    const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+    const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     let result = '';
     for (let i = 0; i < length; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
